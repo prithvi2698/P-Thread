@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Lock, ArrowRight, Shield, Command } from 'lucide-react';
-
-import { auth, db } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../supabase';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -22,61 +19,21 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     name: ''
   });
 
-  const syncUserToCloud = async (userData: { name: string; email: string; uid: string }) => {
-    // Archival Sync: Save user mail and identity to Firestore
-    await setDoc(doc(db, 'users', userData.uid), {
-      uid: userData.uid,
-      email: userData.email,
-      displayName: userData.name,
-      lastLogin: serverTimestamp(),
-    }, { merge: true });
-
-    // SQL SYNC to local archive
-    try {
-      await fetch('/api/auth-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: userData.uid,
-          email: userData.email,
-          displayName: userData.name
-        })
-      });
-    } catch (err) {
-      console.error("SQL_IDENTITY_SYNC_FAIL:", err);
-    }
-  };
-
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setVerificationError('');
     try {
-      const provider = new GoogleAuthProvider();
-      // Optimization: Force select account to avoid silent failures
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      const result = await signInWithPopup(auth, provider);
-      const userData = {
-        name: result.user.displayName || 'ACQUIRER_01',
-        email: result.user.email || '',
-        uid: result.user.uid
-      };
-
-      await syncUserToCloud(userData);
-      onLogin(userData);
-      onClose();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+      // Note: Redirect happens automatically for OAuth
     } catch (error: any) {
       console.error("Google Sync Failure:", error);
-      if (error.code === 'auth/operation-not-allowed') {
-        setVerificationError('GOOGLE_AUTH_DISABLED // ENABLE_IN_FIREBASE_CONSOLE');
-      } else if (error.code === 'auth/unauthorized-domain') {
-        setVerificationError('DOMAIN_NOT_AUTHORIZED // ADD_TO_FIREBASE_CONSOLE');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        setVerificationError('TERMINAL_INTERRUPTED // POPUP_CLOSED');
-      } else {
-        setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
-      }
-    } finally {
+      setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
       setIsLoading(false);
     }
   };
@@ -87,32 +44,47 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     setVerificationError('');
 
     try {
-      let userCredential;
       if (isRegistering) {
-        userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-        if (formData.name) {
-          await updateProfile(userCredential.user, { displayName: formData.name });
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              full_name: formData.name
+            }
+          }
+        });
+        if (error) throw error;
+        
+        if (data.session) {
+          onLogin({
+            name: formData.name,
+            email: formData.email,
+            uid: data.session.user.id
+          });
+          onClose();
+        } else {
+          setVerificationError('VERIFICATION_EMAIL_DISPATCHED // CHECK_INBOX');
         }
       } else {
-        userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password
+        });
+        if (error) throw error;
+
+        if (data.session) {
+          onLogin({
+            name: data.session.user.user_metadata.full_name || data.session.user.email?.split('@')[0] || 'ACQUIRER_01',
+            email: data.session.user.email || '',
+            uid: data.session.user.id
+          });
+          onClose();
+        }
       }
-
-      const firebaseUser = userCredential.user;
-      const userData = {
-        name: firebaseUser.displayName || formData.name || 'ACQUIRER_01',
-        email: firebaseUser.email || '',
-        uid: firebaseUser.uid
-      };
-
-      await syncUserToCloud(userData);
-      onLogin(userData);
-      onClose();
     } catch (error: any) {
       console.error("Authentication failure:", error);
-      const message = error.code === 'auth/invalid-credential' 
-        ? 'INVALID_ACCESS_CIPHER // ACCESS_DENIED'
-        : error.message || 'AUTHENTICATION_PROTOCOL_FAILURE';
-      setVerificationError(message);
+      setVerificationError(error.message || 'AUTHENTICATION_PROTOCOL_FAILURE');
     } finally {
       setIsLoading(false);
     }

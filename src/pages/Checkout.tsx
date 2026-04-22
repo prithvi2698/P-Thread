@@ -4,8 +4,7 @@ import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
-import { db } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../supabase';
 
 interface CheckoutProps {
   cart: CartItem[];
@@ -196,33 +195,36 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
           
           try {
-            // BACKEND SYNC: Save order to Firestore
-            await addDoc(collection(db, 'orders'), {
-              userId: user?.uid || null,
-              email: formData.email,
-              items: cart.map(item => ({
-                id: item.id,
-                name: item.name,
-                color: item.selectedColor,
-                size: item.selectedSize,
-                quantity: item.quantity,
-                price: item.price
-              })),
-              total,
-              shipping: {
-                amount: shipping,
-                region: shippingRegion,
-                address: formData.address,
-                city: formData.city,
-                postalCode: formData.postalCode,
-                country: formData.country
-              },
-              paymentId: response.razorpay_payment_id,
-              status: 'PENDING_DISPATCH',
-              createdAt: serverTimestamp()
-            });
+            // BACKEND SYNC: Save order to Supabase
+            const { error: supabaseError } = await supabase
+              .from('orders')
+              .insert([{
+                user_id: user?.uid || null,
+                email: formData.email,
+                total,
+                shipping_amount: shipping,
+                payment_id: response.razorpay_payment_id,
+                status: 'PENDING_DISPATCH',
+                shipping_details: {
+                  address: formData.address,
+                  city: formData.city,
+                  postal_code: formData.postalCode,
+                  country: formData.country,
+                  region: shippingRegion
+                },
+                items: cart.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  color: item.selectedColor,
+                  size: item.selectedSize,
+                  quantity: item.quantity,
+                  price: item.price
+                }))
+              }]);
 
-            // BACKEND SYNC: Send Email Receipt via API
+            if (supabaseError) throw supabaseError;
+
+            // BACKEND SYNC: Send Email Receipt via API (Includes SQL Sync)
             await fetch('/api/send-receipt', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

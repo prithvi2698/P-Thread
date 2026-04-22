@@ -9,12 +9,11 @@ import CartDrawer from './components/CartDrawer';
 import WishlistDrawer from './components/WishlistDrawer';
 import ProductModal from './components/ProductModal';
 import LoginModal from './components/LoginModal';
-import { auth } from './firebase';
-import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import About from './pages/About';
 import Checkout from './pages/Checkout';
 import { PRODUCTS } from './constants';
 import { CartItem, Product } from './types';
+import { supabase } from './supabase';
 
 function AppContent() {
   const location = useLocation();
@@ -37,19 +36,30 @@ function AppContent() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
+    // Supabase Identity Sync
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
         setUser({
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ACQUIRER_01',
-          email: firebaseUser.email || '',
-          uid: firebaseUser.uid
+          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'ACQUIRER_01',
+          email: session.user.email || '',
+          uid: session.user.id
+        });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'ACQUIRER_01',
+          email: session.user.email || '',
+          uid: session.user.id
         });
       } else {
         setUser(null);
       }
     });
 
-    return () => unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -121,14 +131,14 @@ function AppContent() {
   const wishlistProducts = PRODUCTS.filter(p => wishlist.includes(p.id));
 
   const handleLogin = (userData: { name: string; email: string; uid: string }) => {
-    // User state is handled by onAuthStateChanged listener
+    setUser(userData);
     setNotification(`IDENTITY VERIFIED // WELCOME ${userData.name.toUpperCase()}`);
     setTimeout(() => setNotification(null), 4000);
   };
 
   const handleLogout = async () => {
     try {
-      await firebaseSignOut(auth);
+      await supabase.auth.signOut();
       setNotification("TERMINAL DISCONNECTED");
       setTimeout(() => setNotification(null), 3000);
     } catch (error) {

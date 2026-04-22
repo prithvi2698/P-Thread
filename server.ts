@@ -165,21 +165,9 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'custom',
+      appType: 'spa',
     });
     app.use(vite.middlewares);
-
-    app.use('*', async (req, res, next) => {
-      const url = req.originalUrl;
-      try {
-        let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
@@ -188,13 +176,12 @@ async function startServer() {
     });
   }
 
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`P-THREAD STUDIO Server running at http://0.0.0.0:${PORT}`);
-    });
-  }
-  
-  return app;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`P-THREAD STUDIO Server running at http://0.0.0.0:${PORT}`);
+  });
 }
 
-export default await startServer();
+startServer().catch(err => {
+  console.error('SERVER_START_FAILURE:', err);
+  process.exit(1);
+});

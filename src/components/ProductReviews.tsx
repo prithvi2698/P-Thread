@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, MessageSquare, Send, Trash2, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { db } from '../firebase';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { supabase } from '../supabase';
 
 interface Review {
   id: string;
@@ -11,7 +10,7 @@ interface Review {
   userName: string;
   rating: number;
   comment: string;
-  createdAt: any;
+  createdAt: string;
 }
 
 interface ProductReviewsProps {
@@ -27,25 +26,40 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
 
+  const fetchReviews = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('productId', productId)
+        .order('createdAt', { ascending: false });
+      
+      if (error) throw error;
+      setReviews(data || []);
+    } catch (err) {
+      console.error("Supabase Review Fetch failure:", err);
+    }
+  };
+
   useEffect(() => {
-    const q = query(
-      collection(db, 'reviews'),
-      where('productId', '==', productId),
-      orderBy('createdAt', 'desc')
-    );
+    fetchReviews();
+    
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('public:reviews')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'reviews',
+        filter: `productId=eq.${productId}`
+      }, () => {
+        fetchReviews();
+      })
+      .subscribe();
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const reviewData: Review[] = [];
-      snapshot.forEach((doc) => {
-        reviewData.push({ id: doc.id, ...doc.data() } as Review);
-      });
-      setReviews(reviewData);
-    }, (error) => {
-      console.error("ARCHIVAL_QUERY_SYNC_FAILURE:", error);
-      // We might want to suggest index creation if it's that error
-    });
-
-    return () => unsubscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [productId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,16 +73,21 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'reviews'), {
-        productId,
-        userId: user.uid,
-        userName: user.name,
-        rating,
-        comment,
-        createdAt: serverTimestamp()
-      });
+      const { error } = await supabase
+        .from('reviews')
+        .insert([{
+          productId,
+          userId: user.uid,
+          userName: user.name,
+          rating,
+          comment
+        }]);
+      
+      if (error) throw error;
+      
       setComment('');
       setRating(5);
+      fetchReviews();
     } catch (error) {
       console.error("Review synchronization failure:", error);
     } finally {
@@ -78,7 +97,13 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
   const handleDelete = async (reviewId: string) => {
     try {
-      await deleteDoc(doc(db, 'reviews', reviewId));
+      const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId);
+      
+      if (error) throw error;
+      fetchReviews();
     } catch (error) {
       console.error("Archival deletion failure:", error);
     }
@@ -192,7 +217,7 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
                   <div>
                     <h4 className="text-[11px] font-black uppercase tracking-widest leading-none mb-1">{review.userName}</h4>
                     <span className="text-[10px] font-mono text-muted uppercase">
-                      {review.createdAt?.toDate().toLocaleDateString() || 'Pending...'}
+                      {new Date(review.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
