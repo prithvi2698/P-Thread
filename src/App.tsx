@@ -9,6 +9,8 @@ import CartDrawer from './components/CartDrawer';
 import WishlistDrawer from './components/WishlistDrawer';
 import ProductModal from './components/ProductModal';
 import LoginModal from './components/LoginModal';
+import OrderHistory from './components/OrderHistory';
+import AdminDashboard from './components/AdminDashboard';
 import About from './pages/About';
 import Checkout from './pages/Checkout';
 import { PRODUCTS } from './constants';
@@ -32,6 +34,8 @@ function AppContent() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -49,10 +53,18 @@ function AppContent() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        setUser({
+        const userData = {
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'ACQUIRER_01',
           email: session.user.email || '',
           uid: session.user.id
+        };
+        setUser(userData);
+        
+        // Sync Identity to local SQL archive
+        fetch('/api/auth-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userData)
         });
       } else {
         setUser(null);
@@ -63,8 +75,29 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    // Load remote cart if user is logged in
+    if (user) {
+      fetch(`/api/cart?uid=${user.uid}`)
+        .then(res => res.json())
+        .then(items => {
+          if (items && items.length > 0) {
+            setCart(items);
+          }
+        });
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    // Sync cart to remote if user is logged in
+    if (user) {
+      fetch('/api/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, items: cart })
+      });
+    }
     localStorage.setItem('threads-cart', JSON.stringify(cart));
-  }, [cart]);
+  }, [cart, user?.uid]);
 
   useEffect(() => {
     localStorage.setItem('threads-wishlist', JSON.stringify(wishlist));
@@ -196,6 +229,8 @@ function AppContent() {
             user={user}
             onLoginToggle={() => setIsLoginOpen(true)}
             onLogout={handleLogout}
+            onOrderHistoryToggle={() => setIsOrderHistoryOpen(true)}
+            onAdminToggle={() => setIsAdminOpen(true)}
           />
         )}
         
@@ -280,6 +315,20 @@ function AppContent() {
         onClose={() => setIsLoginOpen(false)}
         onLogin={handleLogin}
       />
+
+      <OrderHistory 
+        isOpen={isOrderHistoryOpen}
+        onClose={() => setIsOrderHistoryOpen(false)}
+        uid={user?.uid || ''}
+      />
+
+      {user?.email === 'prithvi2698@gmail.com' && (
+        <AdminDashboard 
+          isOpen={isAdminOpen}
+          onClose={() => setIsAdminOpen(false)}
+          adminEmail={user.email}
+        />
+      )}
 
       <ProductModal 
         product={selectedProduct}

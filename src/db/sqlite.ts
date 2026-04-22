@@ -49,6 +49,16 @@ export function initializeSql() {
       FOREIGN KEY (order_id) REFERENCES orders(id)
     )
   `);
+
+  console.log('INITIALIZING_SQL_ARCHIVE // Sector: Cart');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cart (
+      uid TEXT PRIMARY KEY,
+      items JSON NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (uid) REFERENCES users(uid)
+    )
+  `);
 }
 
 export default db;

@@ -183,86 +183,116 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       }
 
       // Razorpay Integration
-      const options = {
-        key: (import.meta as any).env.VITE_RAZORPAY_KEY || "rzp_test_SfiDxogVmgebVI",
-        amount: total * 100, // Amount in paise
-        currency: "INR",
-        name: "P-THREAD STUDIO",
-        description: "ARCHIVE_ACQUISITION // SERIES_01",
-        image: "https://drive.google.com/file/d/1aRVWIinbfZRRHAjz1x7OJI_yo9aEmpA5/view?usp=sharing",
-        handler: async function (response: any) {
-          setIsProcessing(true);
-          setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
-          
-          try {
-            // BACKEND SYNC: Save order to Supabase
-            const { error: supabaseError } = await supabase
-              .from('orders')
-              .insert([{
-                user_id: user?.uid || null,
-                email: formData.email,
-                total,
-                shipping_amount: shipping,
-                payment_id: response.razorpay_payment_id,
-                status: 'PENDING_DISPATCH',
-                shipping_details: {
-                  address: formData.address,
-                  city: formData.city,
-                  postal_code: formData.postalCode,
-                  country: formData.country,
-                  region: shippingRegion
-                },
-                items: cart.map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  color: item.selectedColor,
-                  size: item.selectedSize,
-                  quantity: item.quantity,
-                  price: item.price
-                }))
-              }]);
+      try {
+        setProcessState('INITIATING_SECURE_GATEWAY');
+        const orderRes = await fetch('/api/payment/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: total })
+        });
+        const orderData = await orderRes.json();
 
-            if (supabaseError) throw supabaseError;
+        const options = {
+          key: (import.meta as any).env.VITE_RAZORPAY_KEY || "rzp_test_SfiDxogVmgebVI",
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: "P-THREAD STUDIO",
+          description: "ARCHIVE_ACQUISITION // SERIES_01",
+          order_id: orderData.id,
+          image: "https://drive.google.com/file/d/1aRVWIinbfZRRHAjz1x7OJI_yo9aEmpA5/view?usp=sharing",
+          handler: async function (response: any) {
+            setIsProcessing(true);
+            setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
+            
+            try {
+              // Server-side verification
+              const verifyRes = await fetch('/api/payment/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature
+                })
+              });
+              const verifyData = await verifyRes.json();
+              if (!verifyData.success) {
+                throw new Error('PAYMENT_VERIFICATION_FAILURE');
+              }
 
-            // BACKEND SYNC: Send Email Receipt via API (Includes SQL Sync)
-            await fetch('/api/send-receipt', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: formData.email,
-                shipping,
-                total,
-                paymentId: response.razorpay_payment_id,
-                userId: user?.uid,
-                orderDetails: cart.map(item => ({
-                  name: item.name,
-                  color: item.selectedColor,
-                  size: item.selectedSize,
-                  quantity: item.quantity,
-                  price: item.price
-                }))
-              })
-            });
-          } catch (error) {
-            console.error("Archival Sync Failure:", error);
+              // BACKEND SYNC: Save order to Supabase
+              const { error: supabaseError } = await supabase
+                .from('orders')
+                .insert([{
+                  user_id: user?.uid || null,
+                  email: formData.email,
+                  total,
+                  shipping_amount: shipping,
+                  payment_id: response.razorpay_payment_id,
+                  status: 'PENDING_DISPATCH',
+                  shipping_details: {
+                    address: formData.address,
+                    city: formData.city,
+                    postal_code: formData.postalCode,
+                    country: formData.country,
+                    region: shippingRegion
+                  },
+                  items: cart.map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    color: item.selectedColor,
+                    size: item.selectedSize,
+                    quantity: item.quantity,
+                    price: item.price
+                  }))
+                }]);
+
+              if (supabaseError) throw supabaseError;
+
+              // BACKEND SYNC: Send Email Receipt via API (Includes SQL Sync)
+              await fetch('/api/send-receipt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: formData.email,
+                  shipping,
+                  total,
+                  paymentId: response.razorpay_payment_id,
+                  userId: user?.uid,
+                  orderDetails: cart.map((item: any) => ({
+                    name: item.name,
+                    color: item.selectedColor,
+                    size: item.selectedSize,
+                    quantity: item.quantity,
+                    price: item.price
+                  }))
+                })
+              });
+              
+              setIsProcessing(false);
+              setIsSuccess(true);
+              onComplete();
+            } catch (error) {
+              console.error("Archival Sync Failure:", error);
+              setProcessState('SYNC_ERROR // RETRYING');
+              setIsProcessing(false);
+            }
+          },
+          prefill: {
+            name: `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+            contact: formData.phone
+          },
+          theme: {
+            color: "#e61e1e"
           }
+        };
 
-          setIsProcessing(false);
-          setIsSuccess(true);
-          onComplete();
-        },
-        prefill: {
-          name: `${formData.firstName} ${formData.lastName}`,
-          email: formData.email,
-          contact: ""
-        },
-        theme: {
-          color: "#e61e1e"
-        }
-      };
-
-      const rzp = new Razorpay(options);
-      rzp.open();
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } catch (err) {
+        console.error("Order creation failure:", err);
+      }
     }
   };
 

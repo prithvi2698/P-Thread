@@ -6,11 +6,29 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import sqliteDb, { initializeSql } from './src/db/sqlite.js';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let resendClient: Resend | null = null;
+let razorpayInstance: Razorpay | null = null;
+
+function getRazorpay(): Razorpay {
+  if (!razorpayInstance) {
+    const key = process.env.VITE_RAZORPAY_KEY || 'rzp_test_SfiDxogVmgebVI';
+    const secret = process.env.RAZORPAY_SECRET;
+    if (!secret) {
+      console.warn('RAZORPAY_SECRET_MISSING // PAYMENTS_UNVERIFIED');
+    }
+    razorpayInstance = new Razorpay({
+      key_id: key,
+      key_secret: secret || 'placeholder',
+    });
+  }
+  return razorpayInstance;
+}
 
 function getResendClient(): Resend {
   if (!resendClient) {
@@ -44,6 +62,121 @@ async function startServer() {
     } catch (err) {
       console.error('SQL_AUTH_SYNC_FAILURE:', err);
       res.status(500).json({ error: 'SQL sync failed' });
+    }
+  });
+
+  // Order Management Sector
+  app.get('/api/orders', (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
+    
+    try {
+      const orders = sqliteDb.prepare(`
+        SELECT o.*, 
+        (SELECT json_group_array(json_object('name', product_name, 'color', color, 'size', size, 'quantity', quantity, 'price', price)) FROM order_items WHERE order_id = o.id) as items
+        FROM orders o WHERE uid = ? ORDER BY created_at DESC
+      `).all(uid);
+      
+      res.json(orders.map((o: any) => ({ ...o, items: JSON.parse(o.items) })));
+    } catch (err) {
+      res.status(500).json({ error: 'ORDER_FETCH_FAILURE' });
+    }
+  });
+
+  // Cart Persistence Sector
+  app.get('/api/cart', (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
+    
+    try {
+      const row = sqliteDb.prepare('SELECT items FROM cart WHERE uid = ?').get(uid) as { items: string } | undefined;
+      res.json(row ? JSON.parse(row.items) : []);
+    } catch (err) {
+      res.status(500).json({ error: 'CART_FETCH_FAILURE' });
+    }
+  });
+
+  app.post('/api/cart', (req, res) => {
+    const { uid, items } = req.body;
+    if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
+
+    try {
+      sqliteDb.prepare('INSERT OR REPLACE INTO cart (uid, items, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+        .run(uid, JSON.stringify(items));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'CART_SYNC_FAILURE' });
+    }
+  });
+
+  // Admin Sector (Restricted)
+  const ADMIN_EMAILS = ['prithvi2698@gmail.com'];
+  
+  app.get('/api/admin/orders', (req, res) => {
+    const email = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    try {
+      const orders = sqliteDb.prepare(`
+        SELECT o.*, u.email as user_email,
+        (SELECT json_group_array(json_object('name', product_name, 'color', color, 'size', size, 'quantity', quantity, 'price', price)) FROM order_items WHERE order_id = o.id) as items
+        FROM orders o 
+        LEFT JOIN users u ON o.uid = u.uid
+        ORDER BY created_at DESC
+      `).all();
+      res.json(orders.map((o: any) => ({ ...o, items: JSON.parse(o.items) })));
+    } catch (err) {
+      res.status(500).json({ error: 'ADMIN_ORDER_FETCH_FAILURE' });
+    }
+  });
+
+  app.patch('/api/admin/orders/:id', (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    const email = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    try {
+      sqliteDb.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'ORDER_UPDATE_FAILURE' });
+    }
+  });
+
+  // Payment Verification Route
+  app.post('/api/payment/verify', (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const secret = process.env.RAZORPAY_SECRET;
+
+    if (!secret) {
+      console.warn('SKIP_SIGNATURE_VERIFICATION // NO_SECRET');
+      return res.json({ success: true }); // Fallback for dev
+    }
+
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+    const generatedSignature = hmac.digest('hex');
+
+    if (generatedSignature === razorpay_signature) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: 'SIGNATURE_INVALID' });
+    }
+  });
+
+  app.post('/api/payment/create-order', async (req, res) => {
+    const { amount } = req.body;
+    try {
+      const razorpay = getRazorpay();
+      const order = await razorpay.orders.create({
+        amount: amount * 100, // in paise
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}`
+      });
+      res.json(order);
+    } catch (err) {
+      res.status(500).json({ error: 'ORDER_CREATION_FAILURE' });
     }
   });
 

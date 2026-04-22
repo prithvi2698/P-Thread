@@ -11,6 +11,8 @@ interface HeaderProps {
   user: { name: string; email: string } | null;
   onLoginToggle: () => void;
   onLogout: () => void;
+  onOrderHistoryToggle: () => void;
+  onAdminToggle: () => void;
 }
 
 export default function Header({ 
@@ -20,7 +22,9 @@ export default function Header({
   onWishlistToggle,
   user,
   onLoginToggle,
-  onLogout
+  onLogout,
+  onOrderHistoryToggle,
+  onAdminToggle
 }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -93,9 +97,23 @@ export default function Header({
             <div className="flex items-center gap-2 md:gap-3 pr-4 md:pr-6 border-r border-white/10 h-8">
               <div className="text-right flex flex-col items-end">
                 <span className="text-[6px] md:text-[8px] text-accent font-black tracking-[0.2em] leading-none mb-1">ID_VERIFIED</span>
-                <span className="hidden md:block text-[10px] font-black tracking-widest leading-none">{user.name.toUpperCase()}</span>
+                <button 
+                  onClick={onOrderHistoryToggle}
+                  className="hidden md:block text-[10px] font-black tracking-widest leading-none hover:text-accent transition-colors"
+                >
+                  {user.name.toUpperCase()}
+                </button>
                 <span className="md:hidden text-[8px] font-black tracking-widest leading-none truncate max-w-[40px]">USR</span>
               </div>
+              {user.email === 'prithvi2698@gmail.com' && (
+                <button 
+                  onClick={onAdminToggle}
+                  className="p-1.5 bg-white/5 border border-white/10 hover:border-accent group"
+                  title="Admin Dashboard"
+                >
+                  <Menu className="w-3 h-3 text-muted group-hover:text-accent" />
+                </button>
+              )}
               <button 
                 onClick={onLogout}
                 className="group flex items-center gap-2 px-3 py-1.5 bg-accent/10 border border-accent/20 hover:bg-accent hover:border-accent transition-all md:ml-4"
