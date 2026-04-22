@@ -11,6 +11,7 @@ export interface Product {
   isNew?: boolean;
   video?: string;
   images?: string[];
+  stock?: number;
 }
 
 export interface CartItem extends Product {

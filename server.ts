@@ -5,7 +5,8 @@ import { Resend } from 'resend';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import sqliteDb, { initializeSql } from './src/db/sqlite.js';
+import sqliteDb, { initializeSql, seedProducts } from './src/db/sqlite.js';
+import { PRODUCTS } from './src/constants.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -43,6 +44,7 @@ function getResendClient(): Resend {
 
 async function startServer() {
   initializeSql();
+  seedProducts(PRODUCTS);
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -50,6 +52,22 @@ async function startServer() {
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Product Sector
+  app.get('/api/products', (req, res) => {
+    try {
+      const products = sqliteDb.prepare('SELECT * FROM products WHERE is_archived = 0').all();
+      res.json(products.map((p: any) => ({
+        ...p,
+        images: JSON.parse(p.images || '[]'),
+        colors: JSON.parse(p.colors || '[]'),
+        sizes: JSON.parse(p.sizes || '[]'),
+        isNew: p.is_archived === 0 // Logic for display
+      })));
+    } catch (err) {
+      res.status(500).json({ error: 'PRODUCT_FETCH_FAILURE' });
+    }
   });
 
   // API Routes
@@ -118,11 +136,10 @@ async function startServer() {
 
     try {
       const orders = sqliteDb.prepare(`
-        SELECT o.*, u.email as user_email,
+        SELECT o.*, o.email as user_email,
         (SELECT json_group_array(json_object('name', product_name, 'color', color, 'size', size, 'quantity', quantity, 'price', price)) FROM order_items WHERE order_id = o.id) as items
         FROM orders o 
-        LEFT JOIN users u ON o.uid = u.uid
-        ORDER BY created_at DESC
+        ORDER BY o.created_at DESC
       `).all();
       res.json(orders.map((o: any) => ({ ...o, items: JSON.parse(o.items) })));
     } catch (err) {
@@ -144,14 +161,53 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/admin/products/:id', (req, res) => {
+    const { id } = req.params;
+    const { stock, price } = req.body;
+    const email = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    try {
+      if (stock !== undefined) {
+        sqliteDb.prepare('UPDATE products SET stock = ? WHERE id = ?').run(stock, id);
+      }
+      if (price !== undefined) {
+        sqliteDb.prepare('UPDATE products SET price = ? WHERE id = ?').run(price, id);
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'PRODUCT_UPDATE_FAILURE' });
+    }
+  });
+
   // Payment Verification Route
   app.post('/api/payment/verify', (req, res) => {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, order_items } = req.body;
     const secret = process.env.RAZORPAY_SECRET;
+
+    const finalizePayment = () => {
+      // Decrement Inventory
+      if (order_items && Array.isArray(order_items)) {
+        try {
+          sqliteDb.transaction(() => {
+            const updateStock = sqliteDb.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?');
+            for (const item of order_items) {
+              const result = updateStock.run(item.quantity, item.id, item.quantity);
+              if (result.changes === 0) {
+                console.warn(`STOCK_INSUFFICIENT // Product: ${item.id}`);
+              }
+            }
+          })();
+        } catch (err) {
+          console.error('INVENTORY_UPDATE_FAILURE:', err);
+        }
+      }
+      res.json({ success: true });
+    };
 
     if (!secret) {
       console.warn('SKIP_SIGNATURE_VERIFICATION // NO_SECRET');
-      return res.json({ success: true }); // Fallback for dev
+      return finalizePayment();
     }
 
     const hmac = crypto.createHmac('sha256', secret);
@@ -159,7 +215,7 @@ async function startServer() {
     const generatedSignature = hmac.digest('hex');
 
     if (generatedSignature === razorpay_signature) {
-      res.json({ success: true });
+      finalizePayment();
     } else {
       res.status(400).json({ success: false, error: 'SIGNATURE_INVALID' });
     }

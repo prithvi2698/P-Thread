@@ -68,10 +68,14 @@ export default function WishlistDrawer({
                         initial={{ scale: 1.3, opacity: 0, x: 20 }}
                         whileInView={{ scale: 1, opacity: 1, x: 0 }}
                         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                        src={product.image} 
+                        src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
                         alt={product.name} 
                         className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700"
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+                        }}
                       />
                       <div className="absolute inset-2 border border-white/5 pointer-events-none" />
                     </div>

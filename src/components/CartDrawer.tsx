@@ -75,10 +75,14 @@ export default function CartDrawer({ isOpen, onClose, items, onUpdateQuantity, o
                       initial={{ scale: 1.3, opacity: 0, x: 20 }}
                       whileInView={{ scale: 1, opacity: 1, x: 0 }}
                       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                      src={item.image} 
+                      src={item.image || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
                       alt={item.name} 
                       className="w-24 h-32 object-cover bg-ink/5"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+                      }}
                     />
                     <div className="flex-1 space-y-2">
                       <div className="flex justify-between items-start">

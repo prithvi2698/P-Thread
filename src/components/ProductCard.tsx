@@ -59,10 +59,14 @@ export default function ProductCard({
             filter: { duration: 0.4 }
           }}
           viewport={{ once: true }}
-          src={product.image} 
+          src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
           alt={product.name} 
           className="w-full h-full object-cover"
           referrerPolicy="no-referrer"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+          }}
         />
 
         {hasAltImage && (

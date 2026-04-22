@@ -24,8 +24,8 @@ export default function ProductModal({
   user,
   onLoginPrompt
 }: ProductModalProps) {
-  const [selectedColor, setSelectedColor] = useState(product?.colors[0].name || '');
-  const [selectedSize, setSelectedSize] = useState(product?.sizes[0] || '');
+  const [selectedColor, setSelectedColor] = useState(product?.colors?.[0]?.name || '');
+  const [selectedSize, setSelectedSize] = useState(product?.sizes?.[0] || '');
   const [quantity, setQuantity] = useState(1);
   const [showVideo, setShowVideo] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -41,8 +41,8 @@ export default function ProductModal({
 
   useEffect(() => {
     if (product && product.id !== lastProductId) {
-      setSelectedColor(product.colors[0].name);
-      setSelectedSize(product.sizes[0]);
+      setSelectedColor(product.colors?.[0]?.name || '');
+      setSelectedSize(product.sizes?.[0] || '');
       setQuantity(1);
       setCurrentImageIndex(0);
       setShowVideo(false);
@@ -200,7 +200,7 @@ export default function ProductModal({
                   <AnimatePresence mode="wait">
                     <motion.img 
                       key={currentImageIndex}
-                      src={images[currentImageIndex]} 
+                      src={images[currentImageIndex] || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
                       alt={`${product.name} ${currentImageIndex + 1}`} 
                       initial={{ opacity: 0, scale: 1.4, x: 80 }}
                       animate={{ 
@@ -216,6 +216,10 @@ export default function ProductModal({
                       }}
                       className="w-full h-full object-contain pointer-events-none md:pointer-events-auto"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+                      }}
                     />
                   </AnimatePresence>
 
@@ -303,7 +307,11 @@ export default function ProductModal({
                       <span className="text-lg sm:text-xl md:text-2xl font-mono font-bold text-white">₹{product.price}.00</span>
                     </div>
                     <span className="px-3 py-1 bg-accent/10 border border-accent/20 text-accent text-[8px] font-black uppercase tracking-widest">
-                      In Stock // Immediate Ship
+                      {product.stock && product.stock <= 5 
+                        ? `CRITICAL_INVENTORY // ONLY ${product.stock} REMAINING`
+                        : product.stock === 0
+                        ? 'MANIFEST_EXHAUSTED // ARCHIVED'
+                        : `IN_STOCK // SECURE_IMMEDIATELY [${product.stock || 10}]`}
                     </span>
                   </>
                 ) : (
@@ -391,7 +399,11 @@ export default function ProductModal({
                     </button>
                     <span className="text-xl font-mono font-bold w-12 text-center">{quantity}</span>
                     <button 
-                      onClick={() => setQuantity(q => q + 1)}
+                      onClick={() => setQuantity(q => {
+                        const next = q + 1;
+                        if (product.stock !== undefined && next > product.stock) return q;
+                        return next;
+                      })}
                       className="p-2 hover:bg-white/5 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
@@ -409,19 +421,26 @@ export default function ProductModal({
                       onAddToCart(product, selectedColor, selectedSize, quantity);
                       onClose();
                     }}
-                    style={{ backgroundColor: accentColor, boxShadow: `0 10px 30px ${accentColor === '#8b5cf6' ? 'rgba(139,92,246,0.2)' : 'rgba(230,30,30,0.2)'}` }}
+                    disabled={product.stock === 0}
+                    style={{ 
+                      backgroundColor: product.stock === 0 ? '#333' : accentColor, 
+                      boxShadow: product.stock === 0 ? 'none' : `0 10px 30px ${accentColor === '#8b5cf6' ? 'rgba(139,92,246,0.2)' : 'rgba(230,30,30,0.2)'}`,
+                      cursor: product.stock === 0 ? 'not-allowed' : 'pointer'
+                    }}
                     onMouseEnter={(e) => {
+                      if (product.stock === 0) return;
                       e.currentTarget.style.backgroundColor = 'white';
                       e.currentTarget.style.color = accentColor;
                     }}
                     onMouseLeave={(e) => {
+                      if (product.stock === 0) return;
                       e.currentTarget.style.backgroundColor = accentColor;
                       e.currentTarget.style.color = 'white';
                     }}
                     className="flex-1 text-white py-5 text-xs font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3"
                   >
                     <ShoppingBag className="w-4 h-4" />
-                    Acquire Item
+                    {product.stock === 0 ? 'MANIFEST_EXHAUSTED' : 'Acquire Item'}
                   </button>
                 )}
                 <button 

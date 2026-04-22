@@ -29,10 +29,14 @@ export default function Hero() {
             className="relative w-full h-full max-w-[1000px] mt-24 md:mt-0"
           >
             <img 
-              src="https://lh3.googleusercontent.com/d/1NxAlctmR80ayt_tLgE2RnvtcbNrR2hE-" 
+              src="https://lh3.googleusercontent.com/d/1pJiRzzIZgQ7bxhXfpMf8WswEawwrOzGG" 
               alt="Archival Background" 
               className="w-full h-full object-contain object-center scale-150 lg:scale-150 transition-all opacity-100 md:opacity-80"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+              }}
             />
             {/* Overlay Vignetts for seamless blending */}
             <div className="absolute inset-0 bg-gradient-to-t from-bg via-transparent to-bg" />

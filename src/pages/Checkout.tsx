@@ -177,6 +177,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       setStep(step + 1);
     } else {
       // IDENTITY VERIFICATION CHECKPOINT
+      if (typeof (window as any).Razorpay === 'undefined') {
+        setProcessState('GATEWAY_OFFLINE // PLEASE_RELOAD_TERMINAL');
+        return;
+      }
+
       if (!user) {
         onLoginToggle();
         return;
@@ -212,7 +217,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 body: JSON.stringify({
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature
+                  razorpay_signature: response.razorpay_signature,
+                  order_items: cart.map(item => ({
+                    id: item.id,
+                    quantity: item.quantity
+                  }))
                 })
               });
               const verifyData = await verifyRes.json();

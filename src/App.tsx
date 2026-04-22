@@ -30,6 +30,7 @@ function AppContent() {
     return saved ? JSON.parse(saved) : [];
   });
   const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
@@ -39,6 +40,19 @@ function AppContent() {
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
+  useEffect(() => {
+    // Fetch Products from Archival Database
+    fetch('/api/products')
+      .then(res => {
+        if (!res.ok) throw new Error('ARCHIVE_OFFLINE');
+        return res.json();
+      })
+      .then(data => setProducts(data))
+      .catch(err => {
+        console.error("PRODUCT_TELEMETRY_FAILURE:", err);
+        setNotification("SYSTEM_ALERT // ARCHIVAL_SYNC_OFFLINE");
+      });
+  }, []);
   useEffect(() => {
     // Supabase Identity Sync
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -110,6 +124,12 @@ function AppContent() {
       return;
     }
     
+    if (product.stock !== undefined && product.stock <= 0) {
+      setNotification(`MANIFEST_EXHAUSTED: ${product.name} IS ARCHIVED`);
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
     setCart(prev => {
       const existing = prev.find(item => 
         item.id === product.id && 
@@ -117,10 +137,19 @@ function AppContent() {
         item.selectedSize === size
       );
 
+      const currentQty = existing ? existing.quantity : 0;
+      const newQty = currentQty + quantity;
+
+      if (product.stock !== undefined && newQty > product.stock) {
+        setNotification(`INSUFFICIENT_STOCK: ONLY ${product.stock} AVAILABLE`);
+        setTimeout(() => setNotification(null), 3000);
+        return prev;
+      }
+
       if (existing) {
         return prev.map(item => 
           item === existing 
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: newQty }
             : item
         );
       }
@@ -140,7 +169,12 @@ function AppContent() {
   const updateQuantity = (id: string, color: string, size: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id && item.selectedColor === color && item.selectedSize === size) {
-        return { ...item, quantity: Math.max(1, item.quantity + delta) };
+        const nextQty = item.quantity + delta;
+        if (item.stock !== undefined && nextQty > item.stock) {
+          setNotification(`MAX_ARCHIVE_QUOTA_REACHED [${item.stock}]`);
+          return item;
+        }
+        return { ...item, quantity: Math.max(1, nextQty) };
       }
       return item;
     }));
@@ -161,7 +195,7 @@ function AppContent() {
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const wishlistProducts = PRODUCTS.filter(p => wishlist.includes(p.id));
+  const wishlistProducts = products.filter(p => wishlist.includes(p.id));
 
   const handleLogin = (userData: { name: string; email: string; uid: string }) => {
     setUser(userData);
@@ -253,7 +287,7 @@ function AppContent() {
             <main className="flex flex-col gap-24 md:gap-32">
               <Hero />
               <ProductList 
-                products={PRODUCTS.filter(p => p.category !== 'Studio_Packing' && !p.name.startsWith('BTS //'))} 
+                products={products.filter(p => p.category !== 'Studio_Packing' && !p.name.startsWith('BTS //'))} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
@@ -263,7 +297,7 @@ function AppContent() {
                 id="series-01"
               />
               <ProductList 
-                products={PRODUCTS.filter(p => p.name.startsWith('BTS //'))} 
+                products={products.filter(p => p.name.startsWith('BTS //'))} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
@@ -274,7 +308,7 @@ function AppContent() {
                 accentColor="#8b5cf6"
               />
               <ProductList 
-                products={PRODUCTS.filter(p => p.category === 'Studio_Packing')} 
+                products={products.filter(p => p.category === 'Studio_Packing')} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}

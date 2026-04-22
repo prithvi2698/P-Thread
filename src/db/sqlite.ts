@@ -59,6 +59,49 @@ export function initializeSql() {
       FOREIGN KEY (uid) REFERENCES users(uid)
     )
   `);
+
+  console.log('INITIALIZING_SQL_ARCHIVE // Sector: Products');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL,
+      category TEXT,
+      image TEXT,
+      "images" JSON,
+      "colors" JSON,
+      "sizes" JSON,
+      stock INTEGER DEFAULT 10,
+      is_archived INTEGER DEFAULT 0
+    )
+  `);
+}
+
+export function seedProducts(products: any[]) {
+  const check = db.prepare('SELECT count(*) as count FROM products').get() as { count: number };
+  if (check.count === 0) {
+    console.log('SEEDING_ARCHIVE // Core_Acquisition_Series_01');
+    const insert = db.prepare(`
+      INSERT INTO products (id, name, description, price, category, image, images, colors, sizes, stock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    for (const p of products) {
+      insert.run(
+        p.id, 
+        p.name, 
+        p.description || '', 
+        p.price || 0, 
+        p.category, 
+        p.image || (p.images && p.images[0]) || null,
+        JSON.stringify(p.images || []), 
+        JSON.stringify(p.colors || []), 
+        JSON.stringify(p.sizes || []),
+        p.stock || 10
+      );
+    }
+  }
 }
 
 export default db;
