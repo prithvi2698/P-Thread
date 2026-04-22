@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import sqliteDb, { initializeSql } from './src/db/sqlite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,7 @@ function getResendClient(): Resend {
 }
 
 async function startServer() {
+  initializeSql();
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -33,10 +35,77 @@ async function startServer() {
   });
 
   // API Routes
-  app.post('/api/send-receipt', async (req, res) => {
-    const { email, orderDetails, total, shipping } = req.body;
+  app.post('/api/auth-sync', async (req, res) => {
+    const { uid, email, displayName } = req.body;
+    try {
+      const stmt = sqliteDb.prepare('INSERT OR REPLACE INTO users (uid, email, display_name) VALUES (?, ?, ?)');
+      stmt.run(uid, email, displayName);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('SQL_AUTH_SYNC_FAILURE:', err);
+      res.status(500).json({ error: 'SQL sync failed' });
+    }
+  });
+
+  // Phone Verification Sector
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS pending_verifications (
+      phone TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      expires_at DATETIME NOT NULL
+    )
+  `);
+
+  app.post('/api/verify-init', (req, res) => {
+    const { phone } = req.body;
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit manifest
+    const expiresAt = new Date(Date.now() + 10 * 60000).toISOString(); // 10m window
 
     try {
+      const stmt = sqliteDb.prepare('INSERT OR REPLACE INTO pending_verifications (phone, code, expires_at) VALUES (?, ?, ?)');
+      stmt.run(phone, code, expiresAt);
+      
+      console.log(`[TERMINAL_COMMS] DISPATCHING_CODE ${code} TO_TARGET ${phone}`);
+      // In production, sync with SMS Gateway (Twilio/etc)
+      res.json({ success: true, message: 'MANIFEST_DISPATCHED' });
+    } catch (err) {
+      res.status(500).json({ error: 'PROTOCOL_ERROR' });
+    }
+  });
+
+  app.post('/api/verify-confirm', (req, res) => {
+    const { phone, code } = req.body;
+    try {
+      const stmt = sqliteDb.prepare('SELECT code FROM pending_verifications WHERE phone = ? AND expires_at > ?');
+      const row = stmt.get(phone, new Date().toISOString()) as { code: string } | undefined;
+
+      if (row && row.code === code) {
+        sqliteDb.prepare('DELETE FROM pending_verifications WHERE phone = ?').run(phone);
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ success: false, error: 'INVALID_SEQUENCE' });
+      }
+    } catch (err) {
+      res.status(500).json({ error: 'HANDSHAKE_FAILURE' });
+    }
+  });
+
+  app.post('/api/send-receipt', async (req, res) => {
+    const { email, orderDetails, total, shipping, paymentId, userId } = req.body;
+    const orderId = `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+    try {
+      // SQL Sync
+      sqliteDb.transaction(() => {
+        const orderStmt = sqliteDb.prepare('INSERT INTO orders (id, uid, email, total, shipping_amount, payment_id) VALUES (?, ?, ?, ?, ?, ?)');
+        orderStmt.run(orderId, userId || null, email, total, shipping, paymentId || null);
+
+        const itemStmt = sqliteDb.prepare('INSERT INTO order_items (order_id, product_name, color, size, quantity, price) VALUES (?, ?, ?, ?, ?, ?)');
+        for (const item of orderDetails) {
+          itemStmt.run(orderId, item.name, item.color, item.size, item.quantity, item.price);
+        }
+      })();
+
       const resend = getResendClient();
       const { data, error } = await resend.emails.send({
         from: 'P-THREAD STUDIO <onboarding@resend.dev>',

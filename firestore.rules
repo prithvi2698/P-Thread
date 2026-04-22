@@ -11,6 +11,19 @@ service cloud.firestore {
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
+    
+    // User Identity Sector
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             (data.lastLogin == request.time || data.lastLogin == null);
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false; 
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+    }
 
     // Entity Verifiers
     function isValidReview(data) {
@@ -36,6 +49,21 @@ service cloud.firestore {
                       existing().userId == request.auth.uid ||
                       exists(/databases/$(database)/documents/admins/$(request.auth.uid))
                     );
+    }
+
+    // 2. Order Manifest Sector
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+                      resource.data.userId == request.auth.uid ||
+                      resource.data.email == request.auth.token.email
+                    );
+      
+      allow create: if isSignedIn() && 
+                      isValidId(orderId) &&
+                      request.resource.data.email == request.auth.token.email &&
+                      request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false; // Orders are immutable archival records
     }
   }
 }

@@ -9,6 +9,8 @@ import CartDrawer from './components/CartDrawer';
 import WishlistDrawer from './components/WishlistDrawer';
 import ProductModal from './components/ProductModal';
 import LoginModal from './components/LoginModal';
+import { auth } from './firebase';
+import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import About from './pages/About';
 import Checkout from './pages/Checkout';
 import { PRODUCTS } from './constants';
@@ -26,10 +28,7 @@ function AppContent() {
     const saved = localStorage.getItem('threads-wishlist');
     return saved ? JSON.parse(saved) : [];
   });
-  const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(() => {
-    const saved = localStorage.getItem('threads-user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(null);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
@@ -38,20 +37,28 @@ function AppContent() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ACQUIRER_01',
+          email: firebaseUser.email || '',
+          uid: firebaseUser.uid
+        });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('threads-cart', JSON.stringify(cart));
   }, [cart]);
 
   useEffect(() => {
     localStorage.setItem('threads-wishlist', JSON.stringify(wishlist));
   }, [wishlist]);
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('threads-user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('threads-user');
-    }
-  }, [user]);
 
   const addToCart = (product: Product, color: string, size: string, quantity: number = 1) => {
     if (product.price === undefined) {
@@ -114,15 +121,19 @@ function AppContent() {
   const wishlistProducts = PRODUCTS.filter(p => wishlist.includes(p.id));
 
   const handleLogin = (userData: { name: string; email: string; uid: string }) => {
-    setUser(userData);
+    // User state is handled by onAuthStateChanged listener
     setNotification(`IDENTITY VERIFIED // WELCOME ${userData.name.toUpperCase()}`);
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setNotification("TERMINAL DISCONNECTED");
-    setTimeout(() => setNotification(null), 3000);
+  const handleLogout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setNotification("TERMINAL DISCONNECTED");
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error) {
+      console.error("Logout failure:", error);
+    }
   };
 
   const handleLogoClick = (e: React.MouseEvent) => {

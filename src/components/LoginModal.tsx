@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Lock, ArrowRight, Shield, Command } from 'lucide-react';
 
-import { auth } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { auth, db } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -25,11 +26,37 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      onLogin({
+      const userData = {
         name: result.user.displayName || 'ACQUIRER_01',
         email: result.user.email || '',
         uid: result.user.uid
-      });
+      };
+
+      // Archival Sync: Save user mail and identity
+      await setDoc(doc(db, 'users', userData.uid), {
+        uid: userData.uid,
+        email: userData.email,
+        displayName: userData.name,
+        lastLogin: serverTimestamp(),
+        // We use merge: true so we don't overwrite createdAt if it exists
+      }, { merge: true });
+
+      // SQL SYNC
+      try {
+        await fetch('/api/auth-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: userData.uid,
+            email: userData.email,
+            displayName: userData.name
+          })
+        });
+      } catch (err) {
+        console.error("SQL_IDENTITY_SYNC_FAIL:", err);
+      }
+
+      onLogin(userData);
       onClose();
     } catch (error) {
       console.error("Identity Sync Failure:", error);
@@ -38,15 +65,60 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For this simulation, we'll still use the mock for email/pass but with a fake uid
-    onLogin({ 
-      name: formData.name || 'ACQUIRER_01', 
-      email: formData.email,
-      uid: 'mock-' + Math.random().toString(36).substr(2, 9)
-    });
-    onClose();
+    setIsLoading(true);
+    setVerificationError('');
+
+    try {
+      let userCredential;
+      if (isRegistering) {
+        userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+        if (formData.name) {
+          await updateProfile(userCredential.user, { displayName: formData.name });
+        }
+      } else {
+        userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      }
+
+      const firebaseUser = userCredential.user;
+      const userData = {
+        name: firebaseUser.displayName || formData.name || 'ACQUIRER_01',
+        email: firebaseUser.email || '',
+        uid: firebaseUser.uid
+      };
+
+      // Archival Sync: Save user mail and identity
+      await setDoc(doc(db, 'users', userData.uid), {
+        uid: userData.uid,
+        email: userData.email,
+        displayName: userData.name,
+        lastLogin: serverTimestamp(),
+      }, { merge: true });
+
+      // SQL SYNC
+      try {
+        await fetch('/api/auth-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: userData.uid,
+            email: userData.email,
+            displayName: userData.name
+          })
+        });
+      } catch (err) {
+        console.error("SQL_IDENTITY_SYNC_FAIL:", err);
+      }
+
+      onLogin(userData);
+      onClose();
+    } catch (error: any) {
+      console.error("Authentication failure:", error);
+      setVerificationError(error.message || 'AUTHENTICATION_PROTOCOL_FAILURE');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

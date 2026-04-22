@@ -4,6 +4,8 @@ import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
+import { db } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface CheckoutProps {
   cart: CartItem[];
@@ -64,6 +66,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   
   const [formData, setFormData] = useState({
     email: '',
+    phone: '',
     firstName: '',
     lastName: '',
     address: '',
@@ -106,6 +109,58 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [processState, setProcessState] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [verificationError, setVerificationError] = useState('');
+  const [showOtpInput, setShowOtpInput] = useState(false);
+
+  const startPhoneVerification = async () => {
+    if (!formData.phone || formData.phone.length < 10) {
+      setLogisticsError('INVALID_PHONE_SEQUENCE // MIN_LENGTH_REQUIRED');
+      return;
+    }
+    
+    setIsVerifying(true);
+    try {
+      const res = await fetch('/api/verify-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formData.phone })
+      });
+      if (res.ok) {
+        setShowOtpInput(true);
+        setVerificationError('');
+      }
+    } catch (err) {
+      setVerificationError('LOGISTICS_PROTOCOL_FAILURE');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    setIsVerifying(true);
+    try {
+      const res = await fetch('/api/verify-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: formData.phone, code: otpInput })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsPhoneVerified(true);
+        setShowOtpInput(false);
+        setVerificationError('');
+      } else {
+        setVerificationError('INVALID_ACCESS_CODE // AUTH_DENIED');
+      }
+    } catch (err) {
+      setVerificationError('HANDSHAKE_TIMEOUT');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const handleProceed = async () => {
     if (step === 2) {
@@ -141,6 +196,33 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
           
           try {
+            // BACKEND SYNC: Save order to Firestore
+            await addDoc(collection(db, 'orders'), {
+              userId: user?.uid || null,
+              email: formData.email,
+              items: cart.map(item => ({
+                id: item.id,
+                name: item.name,
+                color: item.selectedColor,
+                size: item.selectedSize,
+                quantity: item.quantity,
+                price: item.price
+              })),
+              total,
+              shipping: {
+                amount: shipping,
+                region: shippingRegion,
+                address: formData.address,
+                city: formData.city,
+                postalCode: formData.postalCode,
+                country: formData.country
+              },
+              paymentId: response.razorpay_payment_id,
+              status: 'PENDING_DISPATCH',
+              createdAt: serverTimestamp()
+            });
+
+            // BACKEND SYNC: Send Email Receipt via API
             await fetch('/api/send-receipt', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -149,6 +231,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 shipping,
                 total,
                 paymentId: response.razorpay_payment_id,
+                userId: user?.uid,
                 orderDetails: cart.map(item => ({
                   name: item.name,
                   color: item.selectedColor,
@@ -159,7 +242,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               })
             });
           } catch (error) {
-            console.error("Archival Email Dispatch Failure:", error);
+            console.error("Archival Sync Failure:", error);
           }
 
           setIsProcessing(false);
@@ -253,6 +336,56 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         </button>
 
         <div className="max-w-2xl">
+          {/* OTP INTERRUPT MODAL */}
+          <AnimatePresence>
+            {showOtpInput && (
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-bg/80 backdrop-blur-sm"
+              >
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  className="bg-surface border border-accent p-10 max-w-sm w-full space-y-6"
+                >
+                  <div>
+                    <span className="text-[10px] font-black tracking-[0.4em] text-accent uppercase block mb-2">Security_Interception</span>
+                    <h3 className="text-xl font-black uppercase tracking-tighter">Enter Access Code</h3>
+                    <p className="text-[9px] font-mono text-muted uppercase mt-2">A temporary sequence has been dispatched to {formData.phone}</p>
+                  </div>
+                  
+                  <input 
+                    type="text"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full bg-bg border border-white/10 p-4 text-center text-xl font-mono tracking-[1em] focus:border-accent outline-none"
+                    placeholder="000000"
+                    autoFocus
+                  />
+
+                  {verificationError && (
+                    <p className="text-[9px] font-mono text-accent text-center uppercase">{verificationError}</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <button 
+                      onClick={() => setShowOtpInput(false)}
+                      className="py-4 text-[9px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/5"
+                    >
+                      Abort
+                    </button>
+                    <button 
+                      onClick={verifyOtp}
+                      disabled={isVerifying || otpInput.length < 4}
+                      className="bg-accent text-white py-4 text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-bg transition-all disabled:opacity-50"
+                    >
+                      {isVerifying ? 'Verifying...' : 'Authorize'}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="mb-16">
             <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase mb-2 block">Acquirer_Profile</span>
             <h1 className="text-2xl sm:text-4xl md:text-6xl font-black tracking-tighter uppercase mb-4" tabIndex={-1} ref={stepHeadingRef}>
@@ -298,13 +431,43 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     />
                   </div>
                   <div className="space-y-2">
-                    <label htmlFor="phone" className="text-[9px] font-black uppercase text-muted tracking-widest">Phone Sequence</label>
-                    <input 
-                      id="phone"
-                      type="tel" className="w-full bg-surface border border-white/10 p-4 text-xs font-mono focus:border-accent outline-none" 
-                      placeholder="+91 XXXX-XXXXXX"
-                      required
-                    />
+                    <label htmlFor="phone" className="text-[9px] font-black uppercase text-muted tracking-widest flex items-center gap-2">
+                      <Smartphone className="w-3 h-3 text-accent" />
+                      Phone Sequence
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        id="phone"
+                        type="tel" 
+                        name="phone"
+                        value={formData.phone}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^\d+]/g, '');
+                          setFormData(prev => ({ ...prev, phone: val }));
+                          setIsPhoneVerified(false);
+                        }}
+                        disabled={isPhoneVerified}
+                        className={`flex-1 bg-bg border ${isPhoneVerified ? 'border-accent/30 text-accent' : 'border-white/10'} p-4 text-xs font-mono focus:border-accent outline-none`} 
+                        placeholder="+91 XXXX-XXXXXX"
+                        required
+                      />
+                      {!isPhoneVerified && (
+                        <button
+                          type="button"
+                          onClick={startPhoneVerification}
+                          disabled={isVerifying || !formData.phone}
+                          className="bg-white/5 border border-white/10 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {isVerifying ? 'SYNCING...' : 'VERIFY'}
+                        </button>
+                      )}
+                      {isPhoneVerified && (
+                        <div className="bg-accent/10 border border-accent/30 px-4 flex items-center gap-2 text-[9px] font-black text-accent uppercase tracking-widest">
+                          <ShieldCheck className="w-3 h-3" />
+                          VERIFIED
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="firstName" className="text-[9px] font-black uppercase text-muted tracking-widest">First Name</label>
