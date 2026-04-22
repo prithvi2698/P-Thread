@@ -1,0 +1,286 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import Header from './components/Header';
+import Hero from './components/Hero';
+import ProductList from './components/ProductList';
+import Footer from './components/Footer';
+import CartDrawer from './components/CartDrawer';
+import WishlistDrawer from './components/WishlistDrawer';
+import ProductModal from './components/ProductModal';
+import LoginModal from './components/LoginModal';
+import About from './pages/About';
+import Checkout from './pages/Checkout';
+import { PRODUCTS } from './constants';
+import { CartItem, Product } from './types';
+
+function AppContent() {
+  const location = useLocation();
+  const isCheckout = location.pathname === '/checkout';
+
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem('threads-cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    const saved = localStorage.getItem('threads-wishlist');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(() => {
+    const saved = localStorage.getItem('threads-user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('threads-cart', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem('threads-wishlist', JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('threads-user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('threads-user');
+    }
+  }, [user]);
+
+  const addToCart = (product: Product, color: string, size: string, quantity: number = 1) => {
+    if (product.price === undefined) {
+      setNotification(`PIECE_MANIFEST_ONLY: CANNOT ACQUIRE`);
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+    
+    setCart(prev => {
+      const existing = prev.find(item => 
+        item.id === product.id && 
+        item.selectedColor === color && 
+        item.selectedSize === size
+      );
+
+      if (existing) {
+        return prev.map(item => 
+          item === existing 
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      }
+
+      return [...prev, { ...product, selectedColor: color, selectedSize: size, quantity }];
+    });
+    setNotification(`${product.name} ACQUIRED`);
+    setIsCartOpen(true);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const moveWishlistToCart = (product: Product) => {
+    addToCart(product, product.colors[0].name, product.sizes[0]);
+    toggleWishlist(product.id);
+  };
+
+  const updateQuantity = (id: string, color: string, size: string, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === id && item.selectedColor === color && item.selectedSize === size) {
+        return { ...item, quantity: Math.max(1, item.quantity + delta) };
+      }
+      return item;
+    }));
+  };
+
+  const removeFromCart = (id: string, color: string, size: string) => {
+    setCart(prev => prev.filter(item => 
+      !(item.id === id && item.selectedColor === color && item.selectedSize === size)
+    ));
+  };
+
+  const clearCart = () => setCart([]);
+
+  const toggleWishlist = (id: string) => {
+    setWishlist(prev => 
+      prev.includes(id) ? prev.filter(wId => wId !== id) : [...prev, id]
+    );
+  };
+
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const wishlistProducts = PRODUCTS.filter(p => wishlist.includes(p.id));
+
+  const handleLogin = (userData: { name: string; email: string; uid: string }) => {
+    setUser(userData);
+    setNotification(`IDENTITY VERIFIED // WELCOME ${userData.name.toUpperCase()}`);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setNotification("TERMINAL DISCONNECTED");
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleLogoClick = (e: React.MouseEvent) => {
+    if (location.pathname === '/') {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-bg">
+      {/* Vertical Rail (Sidebar) - Hidden on mobile */}
+      <aside className="hidden lg:flex w-20 border-r border-white/5 flex flex-col justify-between items-center py-10 shrink-0 bg-bg sticky top-0 h-screen z-50">
+        <div className="flex flex-col items-center gap-12">
+          <Link 
+            to="/" 
+            onClick={handleLogoClick}
+            className="vertical-text font-black text-2xl md:text-3xl tracking-[0.2em] uppercase text-ink/80 hover:text-accent transition-colors"
+          >
+            P-THREAD STUDIO
+          </Link>
+          
+          <div className="flex flex-col gap-8 py-8 items-center border-y border-white/5">
+            <span className="vertical-text text-[10px] font-black uppercase tracking-[0.4em] text-accent/50">
+              Core_Archive_Series_01
+            </span>
+            <div className="vertical-text text-[8px] font-black uppercase tracking-[0.2em] text-muted max-h-[300px] overflow-hidden opacity-50">
+              Tactical silhouettes inspired by shadow transformations. Engineered for the operator.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-12">
+          <div className="w-[1px] h-20 bg-accent/20" />
+          <div className="flex flex-col gap-6 text-[9px] uppercase font-black tracking-widest text-muted">
+            <span className="vertical-text opacity-50 cursor-default">Archive_v0.1</span>
+            <a href="#" className="hover:text-accent transition-colors vertical-text">Comm_Link // IG</a>
+          </div>
+          <div className="w-[1px] h-12 bg-white/5" />
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+        {!isCheckout && (
+          <Header 
+            cartCount={cartCount} 
+            onCartToggle={() => setIsCartOpen(true)}
+            wishlistCount={wishlist.length}
+            onWishlistToggle={() => setIsWishlistOpen(true)}
+            user={user}
+            onLoginToggle={() => setIsLoginOpen(true)}
+            onLogout={handleLogout}
+          />
+        )}
+        
+        <AnimatePresence>
+          {notification && (
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 50, opacity: 0 }}
+              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] bg-accent text-white px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl flex items-center gap-3"
+            >
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+              {notification}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <Routes>
+          <Route path="/" element={
+            <main className="flex flex-col gap-24 md:gap-32">
+              <Hero />
+              <ProductList 
+                products={PRODUCTS.filter(p => p.category !== 'Studio_Packing' && !p.name.startsWith('BTS //'))} 
+                onAddToCart={addToCart}
+                onWishlistToggle={toggleWishlist}
+                wishlist={wishlist}
+                onViewDetails={setSelectedProduct}
+                title="2026 Latest Dispatch"
+                collectionSubtitle="Archival_Sync_Active"
+                id="series-01"
+              />
+              <ProductList 
+                products={PRODUCTS.filter(p => p.name.startsWith('BTS //'))} 
+                onAddToCart={addToCart}
+                onWishlistToggle={toggleWishlist}
+                wishlist={wishlist}
+                onViewDetails={setSelectedProduct}
+                title="BTS // Global Archive"
+                collectionSubtitle="Latest_Manifest_v02"
+                id="bts-archive"
+                accentColor="#8b5cf6"
+              />
+              <ProductList 
+                products={PRODUCTS.filter(p => p.category === 'Studio_Packing')} 
+                onAddToCart={addToCart}
+                onWishlistToggle={toggleWishlist}
+                wishlist={wishlist}
+                onViewDetails={setSelectedProduct}
+                title="Studio_Packing"
+                collectionSubtitle="Logistics_Support"
+                id="studio-packing"
+                showFilters={false}
+                variant="poster"
+              />
+            </main>
+          } />
+          <Route path="/about" element={<About />} />
+          <Route path="/checkout" element={<Checkout cart={cart} onComplete={clearCart} user={user} onLoginToggle={() => setIsLoginOpen(true)} />} />
+        </Routes>
+
+        {!isCheckout && <Footer />}
+      </div>
+
+      <CartDrawer 
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        items={cart}
+        onUpdateQuantity={updateQuantity}
+        onRemove={removeFromCart}
+      />
+
+      <WishlistDrawer 
+        isOpen={isWishlistOpen}
+        onClose={() => setIsWishlistOpen(false)}
+        products={wishlistProducts}
+        onRemove={toggleWishlist}
+        onMoveToCart={moveWishlistToCart}
+      />
+
+      <LoginModal 
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onLogin={handleLogin}
+      />
+
+      <ProductModal 
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        onAddToCart={addToCart}
+        onWishlistToggle={toggleWishlist}
+        isWishlisted={selectedProduct ? wishlist.includes(selectedProduct.id) : false}
+        user={user}
+        onLoginPrompt={() => setIsLoginOpen(true)}
+      />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <div className="bg-bg min-h-[100dvh]">
+        <AppContent />
+      </div>
+    </Router>
+  );
+}
+
+

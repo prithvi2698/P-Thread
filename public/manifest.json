@@ -1,0 +1,22 @@
+{
+  "name": "P-THREAD STUDIO",
+  "short_name": "P-THREAD",
+  "description": "Tactical Archival Studio for Modern Operatives.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#e61e1e",
+  "icons": [
+    {
+      "src": "https://lh3.googleusercontent.com/d/1NxAlctmR80ayt_tLgE2RnvtcbNrR2hE-",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://lh3.googleusercontent.com/d/1NxAlctmR80ayt_tLgE2RnvtcbNrR2hE-",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
