@@ -48,7 +48,7 @@ function AppContent() {
         if (!res.ok) throw new Error('ARCHIVE_OFFLINE');
         return res.json();
       })
-      .then(data => setProducts(data))
+      .then(data => setProducts(Array.isArray(data) ? data : []))
       .catch(err => {
         console.error("PRODUCT_TELEMETRY_FAILURE:", err);
         setNotification("SYSTEM_ALERT // ARCHIVAL_SYNC_OFFLINE");

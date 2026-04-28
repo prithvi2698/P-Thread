@@ -16,15 +16,7 @@ import firebaseConfig from './firebase-applet-config.json' assert { type: 'json'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
-}
-
-const firestore = getFirestore(admin.app(), firebaseConfig.firestoreDatabaseId);
-
+let firestore: any;
 let resendClient: Resend | null = null;
 let razorpayInstance: Razorpay | null = null;
 
@@ -55,8 +47,30 @@ function getResendClient(): Resend {
 }
 
 async function startServer() {
-  initializeSql();
-  seedProducts(PRODUCTS);
+  try {
+    const projId = firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT;
+    console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId}`);
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        projectId: projId,
+      });
+    }
+    const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
+    console.log(`INITIALIZING_FIRESTORE // DATABASE: ${dbId}`);
+    firestore = getFirestore(admin.app(), dbId);
+  } catch (firebaseErr) {
+    console.error('FIREBASE_ADMIN_INIT_FAILURE:', firebaseErr);
+  }
+
+  try {
+    console.log('STARTING_SERVER_PHASE // DB_INIT');
+    initializeSql();
+    seedProducts(PRODUCTS);
+    console.log('STARTING_SERVER_PHASE // DB_SYNC_COMPLETE');
+  } catch (dbErr) {
+    console.error('DATABASE_INITIALIZATION_CRITICAL_FAILURE:', dbErr);
+  }
+  
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -69,16 +83,19 @@ async function startServer() {
   // Product Sector
   app.get('/api/products', (req, res) => {
     try {
+      console.log('RETR_PRODUCTS // Archival_Sync_Active');
       const products = sqliteDb.prepare('SELECT * FROM products WHERE is_archived = 0').all();
-      res.json(products.map((p: any) => ({
+      const mapped = products.map((p: any) => ({
         ...p,
         images: JSON.parse(p.images || '[]'),
         colors: JSON.parse(p.colors || '[]'),
         sizes: JSON.parse(p.sizes || '[]'),
         isNew: p.is_archived === 0 // Logic for display
-      })));
+      }));
+      res.json(Array.isArray(mapped) ? mapped : []);
     } catch (err) {
-      res.status(500).json({ error: 'PRODUCT_FETCH_FAILURE' });
+      console.error('CRITICAL_PRODUCT_FETCH_FAILURE:', err);
+      res.status(500).json([]);
     }
   });
 
@@ -101,6 +118,7 @@ async function startServer() {
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
     
     try {
+      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
       const snapshot = await firestore.collection('orders')
         .where('userId', '==', uid)
         .orderBy('createdAt', 'desc')
@@ -153,6 +171,7 @@ async function startServer() {
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
+      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
       const snapshot = await firestore.collection('orders')
         .orderBy('createdAt', 'desc')
         .get();
@@ -178,6 +197,7 @@ async function startServer() {
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
+      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
       await firestore.collection('orders').doc(id).update({
         status,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
