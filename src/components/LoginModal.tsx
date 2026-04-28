@@ -35,7 +35,11 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
       }
     } catch (error: any) {
       console.error("Google Sync Failure:", error);
-      setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
+      if (error.code === 'auth/unauthorized-domain') {
+        setVerificationError('DOMAIN_UNAUTHORIZED: Visit Firebase Console > Auth > Settings > Authorized Domains to allow this URL.');
+      } else {
+        setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
+      }
     } finally {
       setIsLoading(false);
     }
