@@ -15,7 +15,8 @@ import About from './pages/About';
 import Checkout from './pages/Checkout';
 import { PRODUCTS } from './constants';
 import { CartItem, Product } from './types';
-import { supabase } from './supabase';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 function AppContent() {
   const location = useLocation();
@@ -54,23 +55,13 @@ function AppContent() {
       });
   }, []);
   useEffect(() => {
-    // Supabase Identity Sync
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser({
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'ACQUIRER_01',
-          email: session.user.email || '',
-          uid: session.user.id
-        });
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+    // Firebase Identity Sync
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
         const userData = {
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'ACQUIRER_01',
-          email: session.user.email || '',
-          uid: session.user.id
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ACQUIRER_01',
+          email: firebaseUser.email || '',
+          uid: firebaseUser.uid
         };
         setUser(userData);
         
@@ -85,7 +76,7 @@ function AppContent() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -205,7 +196,7 @@ function AppContent() {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOut(auth);
       setNotification("TERMINAL DISCONNECTED");
       setTimeout(() => setNotification(null), 3000);
     } catch (error) {
@@ -325,7 +316,13 @@ function AppContent() {
           <Route path="/checkout" element={<Checkout cart={cart} onComplete={clearCart} user={user} onLoginToggle={() => setIsLoginOpen(true)} />} />
         </Routes>
 
-        {!isCheckout && <Footer />}
+        {!isCheckout && (
+          <Footer 
+            onLoginToggle={() => setIsLoginOpen(true)}
+            user={user}
+            onAdminToggle={() => setIsAdminOpen(true)}
+          />
+        )}
       </div>
 
       <CartDrawer 

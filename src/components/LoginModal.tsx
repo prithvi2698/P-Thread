@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Lock, ArrowRight, Shield, Command } from 'lucide-react';
-import { supabase } from '../supabase';
+import { auth, googleProvider } from '../lib/firebase';
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -23,17 +24,19 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     setIsLoading(true);
     setVerificationError('');
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
-      // Note: Redirect happens automatically for OAuth
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        onLogin({
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
+          email: result.user.email || '',
+          uid: result.user.uid
+        });
+        onClose();
+      }
     } catch (error: any) {
       console.error("Google Sync Failure:", error);
       setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -45,42 +48,23 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
 
     try {
       if (isRegistering) {
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              full_name: formData.name
-            }
-          }
-        });
-        if (error) throw error;
+        const result = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+        await updateProfile(result.user, { displayName: formData.name });
         
-        if (data.session) {
-          onLogin({
-            name: formData.name,
-            email: formData.email,
-            uid: data.session.user.id
-          });
-          onClose();
-        } else {
-          setVerificationError('VERIFICATION_EMAIL_DISPATCHED // CHECK_INBOX');
-        }
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        onLogin({
+          name: formData.name,
           email: formData.email,
-          password: formData.password
+          uid: result.user.uid
         });
-        if (error) throw error;
-
-        if (data.session) {
-          onLogin({
-            name: data.session.user.user_metadata.full_name || data.session.user.email?.split('@')[0] || 'ACQUIRER_01',
-            email: data.session.user.email || '',
-            uid: data.session.user.id
-          });
-          onClose();
-        }
+        onClose();
+      } else {
+        const result = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        onLogin({
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
+          email: result.user.email || '',
+          uid: result.user.uid
+        });
+        onClose();
       }
     } catch (error: any) {
       console.error("Authentication failure:", error);
@@ -221,7 +205,7 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
               </div>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-white/5 text-center">
+            <div className="mt-8 pt-8 border-t border-white/5 text-center flex flex-col gap-4">
               <button 
                 onClick={() => setIsRegistering(!isRegistering)}
                 className="text-[10px] font-black uppercase tracking-widest text-muted hover:text-accent transition-colors"
@@ -230,6 +214,11 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
                   ? 'Already part of the grid? Access Terminal' 
                   : "Need terminal access? Initialize Profile"}
               </button>
+              
+              <div className="flex items-center justify-center gap-2 text-[8px] font-black text-accent/40 uppercase tracking-[0.2em]">
+                <Shield className="w-3 h-3" />
+                Authorized Operators: prithvi2698@gmail.com
+              </div>
             </div>
 
             <div className="mt-8 flex items-center justify-center gap-4 opacity-20">

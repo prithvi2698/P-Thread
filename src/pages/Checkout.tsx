@@ -4,7 +4,30 @@ import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
-import { supabase } from '../supabase';
+import { db, auth } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  console.error('Firestore Error: ', error);
+  throw new Error(JSON.stringify({
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+    },
+    operationType,
+    path
+  }));
+}
 
 interface CheckoutProps {
   cart: CartItem[];
@@ -235,20 +258,19 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 throw new Error('PAYMENT_VERIFICATION_FAILURE');
               }
 
-              // BACKEND SYNC: Save order to Supabase
-              const { error: supabaseError } = await supabase
-                .from('orders')
-                .insert([{
-                  user_id: user?.uid || null,
+              // BACKEND SYNC: Save order to Firestore
+              try {
+                await addDoc(collection(db, 'orders'), {
+                  userId: user?.uid || null,
                   email: formData.email,
                   total,
-                  shipping_amount: shipping,
-                  payment_id: response.razorpay_payment_id,
+                  shippingAmount: shipping,
+                  paymentId: response.razorpay_payment_id,
                   status: 'PENDING_DISPATCH',
-                  shipping_details: {
+                  shippingDetails: {
                     address: formData.address,
                     city: formData.city,
-                    postal_code: formData.postalCode,
+                    postalCode: formData.postalCode,
                     country: formData.country,
                     region: shippingRegion
                   },
@@ -259,10 +281,12 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     size: item.selectedSize,
                     quantity: item.quantity,
                     price: item.price
-                  }))
-                }]);
-
-              if (supabaseError) throw supabaseError;
+                  })),
+                  createdAt: serverTimestamp()
+                });
+              } catch (error) {
+                handleFirestoreError(error, OperationType.WRITE, 'orders');
+              }
 
               // BACKEND SYNC: Send Email Receipt via API (Includes SQL Sync)
               await fetch('/api/send-receipt', {

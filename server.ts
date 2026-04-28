@@ -9,9 +9,21 @@ import sqliteDb, { initializeSql, seedProducts } from './src/db/sqlite.js';
 import { PRODUCTS } from './src/constants.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import firebaseConfig from './firebase-applet-config.json' assert { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+}
+
+const firestore = getFirestore(admin.app(), firebaseConfig.firestoreDatabaseId);
 
 let resendClient: Resend | null = null;
 let razorpayInstance: Razorpay | null = null;
@@ -84,20 +96,26 @@ async function startServer() {
   });
 
   // Order Management Sector
-  app.get('/api/orders', (req, res) => {
+  app.get('/api/orders', async (req, res) => {
     const { uid } = req.query;
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
     
     try {
-      const orders = sqliteDb.prepare(`
-        SELECT o.*, 
-        (SELECT json_group_array(json_object('name', product_name, 'color', color, 'size', size, 'quantity', quantity, 'price', price)) FROM order_items WHERE order_id = o.id) as items
-        FROM orders o WHERE uid = ? ORDER BY created_at DESC
-      `).all(uid);
+      const snapshot = await firestore.collection('orders')
+        .where('userId', '==', uid)
+        .orderBy('createdAt', 'desc')
+        .get();
       
-      res.json(orders.map((o: any) => ({ ...o, items: JSON.parse(o.items) })));
+      const orders = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
+      }));
+      
+      res.json(Array.isArray(orders) ? orders : []);
     } catch (err) {
-      res.status(500).json({ error: 'ORDER_FETCH_FAILURE' });
+      console.error('FIREBASE_ORDER_FETCH_FAILURE:', err);
+      res.status(500).json([]);
     }
   });
 
@@ -130,31 +148,40 @@ async function startServer() {
   // Admin Sector (Restricted)
   const ADMIN_EMAILS = ['prithvi2698@gmail.com'];
   
-  app.get('/api/admin/orders', (req, res) => {
+  app.get('/api/admin/orders', async (req, res) => {
     const email = req.headers['x-admin-email'] as string;
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
-      const orders = sqliteDb.prepare(`
-        SELECT o.*, o.email as user_email,
-        (SELECT json_group_array(json_object('name', product_name, 'color', color, 'size', size, 'quantity', quantity, 'price', price)) FROM order_items WHERE order_id = o.id) as items
-        FROM orders o 
-        ORDER BY o.created_at DESC
-      `).all();
-      res.json(orders.map((o: any) => ({ ...o, items: JSON.parse(o.items) })));
+      const snapshot = await firestore.collection('orders')
+        .orderBy('createdAt', 'desc')
+        .get();
+      
+      const orders = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        user_email: doc.data().email,
+        created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
+      }));
+      
+      res.json(Array.isArray(orders) ? orders : []);
     } catch (err) {
-      res.status(500).json({ error: 'ADMIN_ORDER_FETCH_FAILURE' });
+      console.error('ADMIN_FIREBASE_ORDER_FETCH_FAILURE:', err);
+      res.status(500).json([]);
     }
   });
 
-  app.patch('/api/admin/orders/:id', (req, res) => {
+  app.patch('/api/admin/orders/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     const email = req.headers['x-admin-email'] as string;
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
-      sqliteDb.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+      await firestore.collection('orders').doc(id).update({
+        status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'ORDER_UPDATE_FAILURE' });

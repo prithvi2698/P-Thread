@@ -1,4 +1,4 @@
-import { ShoppingBag, Menu, X, Heart, LogOut } from 'lucide-react';
+import { ShoppingBag, Menu, X, Heart, LogOut, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -108,10 +108,11 @@ export default function Header({
               {user.email === 'prithvi2698@gmail.com' && (
                 <button 
                   onClick={onAdminToggle}
-                  className="p-1.5 bg-white/5 border border-white/10 hover:border-accent group"
+                  className="px-3 py-1.5 bg-accent/20 border border-accent/40 hover:bg-accent hover:text-white transition-all group flex items-center gap-2"
                   title="Admin Dashboard"
                 >
-                  <Menu className="w-3 h-3 text-muted group-hover:text-accent" />
+                  <Shield className="w-3 h-3 text-accent group-hover:text-white" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-accent group-hover:text-white hidden lg:inline">Admin_Terminal</span>
                 </button>
               )}
               <button 

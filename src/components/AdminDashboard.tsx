@@ -48,7 +48,7 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
         headers: { 'x-admin-email': adminEmail }
       });
       const data = await res.json();
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Admin Order Fetch Failure:", err);
     } finally {
@@ -61,9 +61,10 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
     try {
       const res = await fetch('/api/products');
       const data = await res.json();
-      setInventory(data);
+      setInventory(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Admin Inventory Fetch Failure:", err);
+      setInventory([]);
     } finally {
       setLoading(false);
     }
@@ -282,13 +283,26 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                               <span className="text-[8px] font-black text-muted uppercase tracking-widest">Update Sector Status</span>
                               <div className="grid grid-cols-2 gap-2">
                                 {['PENDING_DISPATCH', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map(s => (
-                                  <button
+                                  <motion.button
                                     key={s}
+                                    whileHover={{ scale: 1.02, y: -1 }}
+                                    whileTap={{ scale: 0.98 }}
                                     onClick={() => updateStatus(order.id, s)}
-                                    className={`py-2 text-[8px] font-black border transition-all ${order.status === s ? 'bg-accent border-accent text-white' : 'border-white/10 text-muted hover:border-accent hover:text-accent'}`}
+                                    className={`relative py-2 text-[8px] font-black border uppercase tracking-wider transition-all duration-300 ${
+                                      order.status === s 
+                                        ? 'bg-accent border-accent text-white shadow-[0_0_20px_rgba(230,30,30,0.3)] z-10 scale-105' 
+                                        : 'border-white/10 text-muted hover:border-accent/50 hover:text-accent bg-bg/50'
+                                    }`}
                                   >
+                                    {order.status === s && (
+                                      <motion.div 
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="absolute -inset-[3px] border border-accent/50 pointer-events-none"
+                                      />
+                                    )}
                                     {s.replace('_', ' ')}
-                                  </button>
+                                  </motion.button>
                                 ))}
                               </div>
                             </div>

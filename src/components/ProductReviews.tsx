@@ -1,7 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, MessageSquare, Send, Trash2, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { supabase } from '../supabase';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, QuerySnapshot, DocumentData } from 'firebase/firestore';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: any;
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  console.error('Firestore Error: ', error);
+  throw new Error(JSON.stringify({
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path
+  }));
+}
 
 interface Review {
   id: string;
@@ -26,40 +52,25 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
 
-  const fetchReviews = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('productId', productId)
-        .order('createdAt', { ascending: false });
-      
-      if (error) throw error;
-      setReviews(data || []);
-    } catch (err) {
-      console.error("Supabase Review Fetch failure:", err);
-    }
-  };
-
   useEffect(() => {
-    fetchReviews();
-    
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel('public:reviews')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'reviews',
-        filter: `productId=eq.${productId}`
-      }, () => {
-        fetchReviews();
-      })
-      .subscribe();
+    const q = query(
+      collection(db, 'reviews'),
+      where('productId', '==', productId),
+      orderBy('createdAt', 'desc')
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+      const reviewData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate()?.toISOString() || new Date().toISOString()
+      })) as Review[];
+      setReviews(reviewData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'reviews');
+    });
+
+    return () => unsubscribe();
   }, [productId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,23 +84,19 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .insert([{
-          productId,
-          userId: user.uid,
-          userName: user.name,
-          rating,
-          comment
-        }]);
-      
-      if (error) throw error;
+      await addDoc(collection(db, 'reviews'), {
+        productId,
+        userId: user.uid,
+        userName: user.name,
+        rating,
+        comment,
+        createdAt: serverTimestamp()
+      });
       
       setComment('');
       setRating(5);
-      fetchReviews();
     } catch (error) {
-      console.error("Review synchronization failure:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'reviews');
     } finally {
       setIsSubmitting(false);
     }
@@ -97,15 +104,9 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
   const handleDelete = async (reviewId: string) => {
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .delete()
-        .eq('id', reviewId);
-      
-      if (error) throw error;
-      fetchReviews();
+      await deleteDoc(doc(db, 'reviews', reviewId));
     } catch (error) {
-      console.error("Archival deletion failure:", error);
+      handleFirestoreError(error, OperationType.DELETE, `reviews/${reviewId}`);
     }
   };
 

@@ -42,7 +42,7 @@ export default function OrderHistory({ isOpen, onClose, uid }: OrderHistoryProps
       fetch(`/api/orders?uid=${uid}`)
         .then(res => res.json())
         .then(data => {
-          setOrders(data);
+          setOrders(Array.isArray(data) ? data : []);
           setLoading(false);
         })
         .catch(err => {

@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- SHARED HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      // The instruction says never rely on client claims, check a trusted doc.
+      // We will define admin check based on a 'admins' collection.
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // --- ENTITY VALIDATIONS ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['productId', 'userId', 'userName', 'rating', 'comment', 'createdAt']) &&
+             data.productId is string && data.productId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.userName is string && data.userName.size() <= 128 &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() <= 2000 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['email', 'total', 'status', 'items', 'createdAt']) &&
+             data.email is string && data.email.size() <= 256 &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['PENDING_DISPATCH', 'SHIPPED', 'DELIVERED', 'CANCELLED'] &&
+             data.items is list && data.items.size() > 0 &&
+             data.createdAt == request.time;
+    }
+
+    // --- MATCH BLOCKS ---
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])
+      ) || isAdmin();
+    }
+
+    // REVIEWS COLLECTION
+    match /reviews/{reviewId} {
+      allow list: if true; // Publicly readable reviews
+      allow get: if true;
+      allow create: if isSignedIn() && isValidReview(incoming());
+      allow update: if (isOwner(existing().userId) || isAdmin()) && isValidReview(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'comment'])
+      );
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+
+    // ORDERS COLLECTION
+    match /orders/{orderId} {
+      // Users can see their own orders. Admin sees all.
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Orders are created either by signed in user or by guest if the app allows (here we expect uid if available)
+      allow create: if (isSignedIn() && incoming().userId == request.auth.uid || !incoming().keys().hasAny(['userId'])) && isValidOrder(incoming());
+      
+      // Only admin can update order status
+      allow update: if isAdmin() && isValidOrder(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+      );
+      
+      allow delete: if isAdmin();
+    }
+    
+    // ADMINS COLLECTION (INTERNAL)
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && request.auth.uid == adminId;
+      allow write: if false; // Managed via server/console
+    }
+  }
+}
