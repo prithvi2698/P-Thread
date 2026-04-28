@@ -178,7 +178,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
     } else {
       // IDENTITY VERIFICATION CHECKPOINT
       if (typeof (window as any).Razorpay === 'undefined') {
-        setProcessState('GATEWAY_OFFLINE // PLEASE_RELOAD_TERMINAL');
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        document.body.appendChild(script);
+        setProcessState('GATEWAY_SYNC_REQUIRED // PLEASE_RETRY_IN_A_MOMENT');
         return;
       }
 
@@ -190,15 +194,17 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       // Razorpay Integration
       try {
         setProcessState('INITIATING_SECURE_GATEWAY');
-        const orderRes = await fetch('/api/payment/create-order', {
+        const orderRes = await fetch('/api/create-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: total })
         });
+        
+        if (!orderRes.ok) throw new Error('ORDER_PROTOCOL_FAILURE');
         const orderData = await orderRes.json();
 
         const options = {
-          key: (import.meta as any).env.VITE_RAZORPAY_KEY || "rzp_test_SfiDxogVmgebVI",
+          key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || "rzp_test_placeholder",
           amount: orderData.amount,
           currency: orderData.currency,
           name: "P-THREAD STUDIO",
@@ -211,7 +217,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
             
             try {
               // Server-side verification
-              const verifyRes = await fetch('/api/payment/verify', {
+              const verifyRes = await fetch('/api/verify-payment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

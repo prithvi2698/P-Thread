@@ -18,13 +18,13 @@ let razorpayInstance: Razorpay | null = null;
 
 function getRazorpay(): Razorpay {
   if (!razorpayInstance) {
-    const key = process.env.VITE_RAZORPAY_KEY || 'rzp_test_SfiDxogVmgebVI';
-    const secret = process.env.RAZORPAY_SECRET;
-    if (!secret) {
-      console.warn('RAZORPAY_SECRET_MISSING // PAYMENTS_UNVERIFIED');
+    const key = process.env.RAZORPAY_KEY_ID;
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    if (!key || !secret) {
+      console.warn('RAZORPAY_CREDENTIALS_MISSING // PAYMENTS_UNVERIFIED');
     }
     razorpayInstance = new Razorpay({
-      key_id: key,
+      key_id: key || 'rzp_test_placeholder',
       key_secret: secret || 'placeholder',
     });
   }
@@ -180,10 +180,14 @@ async function startServer() {
     }
   });
 
-  // Payment Verification Route
-  app.post('/api/payment/verify', (req, res) => {
+  // Payment Logic Sector
+  app.post('/api/verify-payment', (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, order_items } = req.body;
-    const secret = process.env.RAZORPAY_SECRET;
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'MISSING_FIELDS' });
+    }
 
     const finalizePayment = () => {
       // Decrement Inventory
@@ -221,17 +225,23 @@ async function startServer() {
     }
   });
 
-  app.post('/api/payment/create-order', async (req, res) => {
+  app.post('/api/create-order', async (req, res) => {
     const { amount } = req.body;
+    
+    if (!amount || amount < 1) {
+      return res.status(400).json({ error: 'INVALID_AMOUNT' });
+    }
+
     try {
       const razorpay = getRazorpay();
       const order = await razorpay.orders.create({
-        amount: amount * 100, // in paise
+        amount: Math.round(amount * 100), // in paise
         currency: 'INR',
         receipt: `receipt_${Date.now()}`
       });
       res.json(order);
     } catch (err) {
+      console.error('RAZORPAY_ORDER_FAILURE:', err);
       res.status(500).json({ error: 'ORDER_CREATION_FAILURE' });
     }
   });
