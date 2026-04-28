@@ -53,6 +53,7 @@ async function startServer() {
     if (!admin.apps.length) {
       admin.initializeApp({
         projectId: projId,
+        credential: admin.credential.applicationDefault()
       });
     }
     const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
@@ -83,14 +84,15 @@ async function startServer() {
   // Product Sector
   app.get('/api/products', (req, res) => {
     try {
-      console.log('RETR_PRODUCTS // Archival_Sync_Active');
       const products = sqliteDb.prepare('SELECT * FROM products WHERE is_archived = 0').all();
+      console.log(`RETR_PRODUCTS // Active_Items: ${products.length} // Table_Scan_Complete`);
+      
       const mapped = products.map((p: any) => ({
         ...p,
         images: JSON.parse(p.images || '[]'),
         colors: JSON.parse(p.colors || '[]'),
         sizes: JSON.parse(p.sizes || '[]'),
-        isNew: p.is_archived === 0 // Logic for display
+        isNew: p.is_archived === 0 
       }));
       res.json(Array.isArray(mapped) ? mapped : []);
     } catch (err) {

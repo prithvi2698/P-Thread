@@ -80,27 +80,33 @@ export function initializeSql() {
 
 export function seedProducts(products: any[]) {
   const check = db.prepare('SELECT count(*) as count FROM products').get() as { count: number };
-  if (check.count === 0) {
-    console.log('SEEDING_ARCHIVE // Core_Acquisition_Series_01');
+  console.log(`CHECKING_ARCHIVE_STOCK // Available: ${check.count} // Manifest: ${products.length}`);
+  
+  if (products.length > 0) {
+    console.log('SYNCING_ARCHIVE // Core_Acquisition_Series_01');
     const insert = db.prepare(`
-      INSERT INTO products (id, name, description, price, category, image, images, colors, sizes, stock)
+      INSERT OR IGNORE INTO products (id, name, description, price, category, image, images, colors, sizes, stock)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    for (const p of products) {
-      insert.run(
-        p.id, 
-        p.name, 
-        p.description || '', 
-        p.price || 0, 
-        p.category, 
-        p.image || (p.images && p.images[0]) || null,
-        JSON.stringify(p.images || []), 
-        JSON.stringify(p.colors || []), 
-        JSON.stringify(p.sizes || []),
-        p.stock || 10
-      );
-    }
+    db.transaction(() => {
+      for (const p of products) {
+        insert.run(
+          p.id, 
+          p.name, 
+          p.description || '', 
+          p.price || 0, 
+          p.category, 
+          p.image || (p.images && p.images[0]) || null,
+          JSON.stringify(p.images || []), 
+          JSON.stringify(p.colors || []), 
+          JSON.stringify(p.sizes || []),
+          p.stock || 10
+        );
+      }
+    })();
+    const after = db.prepare('SELECT count(*) as count FROM products').get() as { count: number };
+    console.log(`ARCHIVE_SYNC_COMPLETE // Manifested: ${after.count} Products`);
   }
 }
 
