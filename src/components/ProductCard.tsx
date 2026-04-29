@@ -41,7 +41,7 @@ export default function ProductCard({
       }`}
     >
       <div 
-        className={`relative ${isPoster ? 'aspect-auto h-[450px] md:h-[600px]' : 'aspect-[3/4]'} overflow-hidden bg-bg/50 flex items-center justify-center cursor-pointer`}
+        className={`relative ${isPoster ? 'aspect-auto h-[450px] md:h-[700px]' : 'aspect-[4/5]'} overflow-hidden bg-white/[0.02] flex items-center justify-center cursor-pointer`}
         onClick={() => {
           if (product.price !== undefined) {
             onViewDetails?.(product);
@@ -49,19 +49,14 @@ export default function ProductCard({
         }}
       >
         <motion.img 
-          initial={{ scale: 1.2, opacity: 0, x: 40 }}
-          whileInView={{ scale: 1, opacity: 1, x: 0 }}
-          animate={{ opacity: (isHovered && hasAltImage) ? 0.4 : 1, filter: (isHovered && hasAltImage) ? 'blur(10px)' : 'blur(0px)' }}
-          transition={{ 
-            duration: 0.8, 
-            ease: [0.16, 1, 0.3, 1],
-            opacity: { duration: 0.4 },
-            filter: { duration: 0.4 }
-          }}
+          initial={{ opacity: 0, scale: 1.1 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          animate={{ opacity: (isHovered && hasAltImage) ? 0.3 : 1, filter: (isHovered && hasAltImage) ? 'blur(15px)' : 'blur(0px)' }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           viewport={{ once: true }}
-          src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop'} 
+          src={product.image || (product.images && product.images[0])} 
           alt={product.name} 
-          className="w-full h-full object-contain p-4"
+          className="w-full h-full object-contain p-8 md:p-12 transition-transform duration-700 group-hover:scale-110"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;

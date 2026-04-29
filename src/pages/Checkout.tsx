@@ -430,7 +430,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               >
                 <motion.div 
                   initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                  className="bg-surface border border-accent p-10 max-w-sm w-full space-y-6"
+                  className="bg-surface border border-accent p-6 md:p-10 max-w-sm w-full space-y-6"
                 >
                   <div>
                     <span className="text-[10px] font-black tracking-[0.4em] text-accent uppercase block mb-2">Security_Interception</span>

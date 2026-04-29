@@ -1,15 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@800;900&display=swap');
 @import "tailwindcss";
 
-@keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-.animate-marquee {
-  animation: marquee 15s linear infinite;
-}
-
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
@@ -25,43 +16,33 @@
 
 @layer base {
   body {
-    @apply font-sans bg-bg text-ink selection:bg-accent selection:text-white;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply font-sans bg-bg text-ink selection:bg-accent selection:text-white antialiased;
   }
 
-  h1 {
-    @apply font-display text-7xl md:text-8xl leading-[0.85] uppercase tracking-tighter font-black;
-  }
-
-  h2 {
-    @apply font-display text-4xl md:text-5xl uppercase tracking-tighter font-black;
-  }
-
-  .outline-text {
-    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.4);
-    color: transparent;
+  .vertical-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
   }
 }
 
-.framed {
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+@layer components {
+  .container-tactical {
+    @apply w-full max-w-[1920px] mx-auto px-6 md:px-12 lg:px-24;
+  }
 }
 
-.framed::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: 20px;
-  right: 20px;
-  height: 1px;
-  @apply bg-accent opacity-0 group-hover:opacity-100 transition-opacity;
+/* Custom Scrollbar Global */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
 }
 
-.vertical-text {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+::-webkit-scrollbar-track {
+  @apply bg-bg;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/5 hover:bg-accent transition-colors;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
