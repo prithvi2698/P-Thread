@@ -204,7 +204,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         const orderData = await orderRes.json();
 
         const options = {
-          key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || "rzp_test_placeholder",
+          key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || "",
           amount: orderData.amount,
           currency: orderData.currency,
           name: "P-THREAD STUDIO",
@@ -230,9 +230,10 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   }))
                 })
               });
-              const verifyData = await verifyRes.json();
-              if (!verifyData.success) {
-                throw new Error('PAYMENT_VERIFICATION_FAILURE');
+              
+              if (!verifyRes.ok) {
+                const errorData = await verifyRes.json();
+                throw new Error(errorData.error || 'PAYMENT_VERIFICATION_FAILURE');
               }
 
               // BACKEND SYNC: Send Email Receipt via API (Includes SQL and FIRESTORE Sync)
@@ -258,10 +259,16 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               setIsProcessing(false);
               setIsSuccess(true);
               onComplete();
-            } catch (error) {
+            } catch (error: any) {
               console.error("Archival Sync Failure:", error);
-              setProcessState('SYNC_ERROR // RETRYING');
+              setProcessState(`SYNC_ERROR: ${error.message || 'PLEASE_CONTACT_SUPPORT'}`);
               setIsProcessing(false);
+            }
+          },
+          modal: {
+            ondismiss: function() {
+              setIsProcessing(false);
+              setProcessState('ACQUISITION_ABORTED // RE-INITIATE_WHEN_READY');
             }
           },
           prefill: {

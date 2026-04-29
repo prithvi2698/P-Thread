@@ -25,11 +25,11 @@ function getRazorpay(): Razorpay {
     const key = process.env.RAZORPAY_KEY_ID;
     const secret = process.env.RAZORPAY_KEY_SECRET;
     if (!key || !secret) {
-      console.warn('RAZORPAY_CREDENTIALS_MISSING // PAYMENTS_UNVERIFIED');
+      throw new Error('RAZORPAY_CREDENTIALS_MISSING // Please define RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment.');
     }
     razorpayInstance = new Razorpay({
-      key_id: key || 'rzp_test_placeholder',
-      key_secret: secret || 'placeholder',
+      key_id: key,
+      key_secret: secret,
     });
   }
   return razorpayInstance;
@@ -48,17 +48,19 @@ function getResendClient(): Resend {
 
 async function startServer() {
   try {
-    const projId = firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT;
-    console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId}`);
+    const projId = firebaseConfig.projectId;
+    const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
+    console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId} // DATABASE: ${dbId}`);
+    
     if (!admin.apps.length) {
+      console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId} // DATABASE: ${dbId}`);
       admin.initializeApp({
-        projectId: projId,
-        credential: admin.credential.applicationDefault()
+        credential: admin.credential.applicationDefault(),
+        projectId: projId
       });
     }
-    const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
-    console.log(`INITIALIZING_FIRESTORE // DATABASE: ${dbId}`);
-    firestore = getFirestore(admin.app(), dbId);
+    
+    firestore = getFirestore(admin.app(), dbId === '(default)' ? undefined : dbId);
   } catch (firebaseErr) {
     console.error('FIREBASE_ADMIN_INIT_FAILURE:', firebaseErr);
   }
@@ -71,25 +73,39 @@ async function startServer() {
 
     // SEED FIRESTORE PRODUCTS
     if (firestore) {
-      const productsSnapshot = await firestore.collection('products').limit(1).get();
-      if (productsSnapshot.empty) {
-        console.log('RECREATING_BACKEND // SEEDING_FIRESTORE_PRODUCTS');
-        const batch = firestore.batch();
-        PRODUCTS.forEach((product: any) => {
-          const docRef = firestore.collection('products').doc(product.id);
-          batch.set(docRef, {
-            ...product,
-            price: Number(product.price),
-            originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
-            isArchived: false,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      console.log('CHECKING_FIRESTORE_CONNECTIVITY // ATTEMPTING_READ');
+      try {
+        const productsSnapshot = await firestore.collection('products').limit(1).get();
+        if (productsSnapshot.empty) {
+          console.log('RECREATING_BACKEND // SEEDING_FIRESTORE_PRODUCTS');
+          const batch = firestore.batch();
+          PRODUCTS.forEach((product: any) => {
+            const docRef = firestore.collection('products').doc(product.id);
+            batch.set(docRef, {
+              ...product,
+              price: Number(product.price),
+              originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
+              isArchived: false,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
           });
-        });
-        await batch.commit();
-        console.log('RECREATING_BACKEND // FIRESTORE_SEED_COMPLETE');
+          await batch.commit();
+          console.log('RECREATING_BACKEND // FIRESTORE_SEED_COMPLETE');
+        } else {
+          console.log('FIRESTORE_PRODUCTS_FOUND // SKIPPING_SEED');
+        }
+      } catch (firestoreReadErr: any) {
+        console.error('FIRESTORE_INIT_READ_FAILURE:', firestoreReadErr.message);
+        if (firestoreReadErr.code === 7 || firestoreReadErr.message?.includes('PERMISSION_DENIED')) {
+          console.error('DIAGNOSTIC: Permission Denied. This usually means the service account does not have "Cloud Datastore User" or "Firebase Admin" roles on the project, or the database ID is incorrect/unprovisioned.');
+          // We don't throw here to allow the server to at least start with SQLite
+          firestore = null; 
+        } else {
+          throw firestoreReadErr;
+        }
       }
     }
-  } catch (dbErr) {
+  } catch (dbErr: any) {
     console.error('DATABASE_INITIALIZATION_CRITICAL_FAILURE:', dbErr);
   }
   
@@ -356,56 +372,50 @@ async function startServer() {
       return res.status(400).json({ error: 'MISSING_FIELDS' });
     }
 
-    const finalizePayment = () => {
-      // Decrement Inventory
-      if (order_items && Array.isArray(order_items)) {
-        try {
-          sqliteDb.transaction(() => {
-            const updateStock = sqliteDb.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?');
-            for (const item of order_items) {
-              const result = updateStock.run(item.quantity, item.id, item.quantity);
-              if (result.changes === 0) {
-                console.warn(`STOCK_INSUFFICIENT // Product: ${item.id}`);
-              }
-            }
-          })();
-        } catch (err) {
-          console.error('INVENTORY_UPDATE_FAILURE:', err);
-        }
-      }
-      res.json({ success: true });
-    };
-
     if (!secret) {
-      console.warn('SKIP_SIGNATURE_VERIFICATION // NO_SECRET');
-      return finalizePayment();
+      return res.status(500).json({ error: 'RAZORPAY_SECRET_MISSING' });
     }
 
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
     const generatedSignature = hmac.digest('hex');
 
-    if (generatedSignature === razorpay_signature) {
-      finalizePayment();
-    } else {
-      res.status(400).json({ success: false, error: 'SIGNATURE_INVALID' });
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ success: false, error: 'SIGNATURE_INVALID' });
     }
+
+    // Decrement Inventory
+    if (order_items && Array.isArray(order_items)) {
+      try {
+        sqliteDb.transaction(() => {
+          const updateStock = sqliteDb.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?');
+          for (const item of order_items) {
+            updateStock.run(item.quantity, item.id, item.quantity);
+          }
+        })();
+      } catch (err) {
+        console.error('INVENTORY_UPDATE_FAILURE:', err);
+      }
+    }
+    res.json({ success: true });
   });
 
   app.post('/api/create-order', async (req, res) => {
     const { amount } = req.body;
     
+    // Minimum 1 INR (100 paise)
     if (!amount || amount < 1) {
-      return res.status(400).json({ error: 'INVALID_AMOUNT' });
+      return res.status(400).json({ error: 'INVALID_AMOUNT // Minimum amount is 1 INR' });
     }
 
     try {
       const razorpay = getRazorpay();
-      const order = await razorpay.orders.create({
+      const options = {
         amount: Math.round(amount * 100), // in paise
         currency: 'INR',
         receipt: `receipt_${Date.now()}`
-      });
+      };
+      const order = await razorpay.orders.create(options);
       res.json(order);
     } catch (err) {
       console.error('RAZORPAY_ORDER_FAILURE:', err);
