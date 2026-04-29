@@ -39,9 +39,16 @@ export default function OrderHistory({ isOpen, onClose, uid }: OrderHistoryProps
   useEffect(() => {
     if (isOpen && uid) {
       setLoading(true);
-      // Firestore fetching temporarily disabled for Auth-only mode
-      setOrders([]);
-      setLoading(false);
+      fetch(`/api/orders?uid=${uid}`)
+        .then(resp => resp.json())
+        .then(data => {
+          setOrders(Array.isArray(data) ? data : []);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error("Order fetch failure:", err);
+          setLoading(false);
+        });
     }
   }, [isOpen, uid]);
 

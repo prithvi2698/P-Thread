@@ -26,8 +26,10 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
 
   useEffect(() => {
-    // Firestore reviews temporarily disabled in Auth-only mode
-    setReviews([]);
+    fetch(`/api/reviews/${productId}`)
+      .then(res => res.json())
+      .then(data => setReviews(Array.isArray(data) ? data : []))
+      .catch(err => console.error('REVIEW_FETCH_FAILURE:', err));
   }, [productId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,8 +41,39 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
     if (!comment.trim()) return;
 
-    // Disabled in Auth-only mode
-    setComment('');
+    setIsSubmitting(true);
+    try {
+      const resp = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          rating,
+          comment,
+          userName: user.name,
+          userId: user.uid
+        })
+      });
+      const data = await resp.json();
+      if (data.id) {
+        const newReview: Review = {
+          id: data.id,
+          productId,
+          userId: user.uid,
+          userName: user.name,
+          rating,
+          comment,
+          createdAt: new Date().toISOString()
+        };
+        setReviews(prev => [newReview, ...prev].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setComment('');
+        setRating(5);
+      }
+    } catch (err) {
+      console.error('REVIEW_SUBMISSION_FAILURE:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async (reviewId: string) => {

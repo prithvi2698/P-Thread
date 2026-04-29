@@ -31,7 +31,18 @@ function AppContent() {
     return saved ? JSON.parse(saved) : [];
   });
   const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(null);
-  const [products, setProducts] = useState<Product[]>(PRODUCTS as Product[]);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    // Initial product fetch
+    fetch('/api/products')
+      .then(res => res.json())
+      .then(data => setProducts(Array.isArray(data) ? data : []))
+      .catch(err => {
+        console.warn('RETR_PRODUCTS_FAILURE // USING_PLACEHOLDER_ARCHIVE');
+        setProducts(PRODUCTS as Product[]);
+      });
+  }, []);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
@@ -48,9 +59,30 @@ function AppContent() {
         const userData = {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Operator',
           email: firebaseUser.email || '',
-          uid: firebaseUser.uid
+          uid: firebaseUser.uid,
+          photoURL: firebaseUser.photoURL
         };
         setUser(userData);
+        // Sync with backend
+        fetch('/api/auth-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userData)
+        }).catch(err => console.error("AUTH_SYNC_FAILURE:", err));
+
+        // Fetch cloud cart
+        fetch(`/api/cart?uid=${firebaseUser.uid}`)
+          .then(res => res.json())
+          .then(cloudCart => {
+            if (Array.isArray(cloudCart) && cloudCart.length > 0) {
+              setCart(prevLocal => {
+                // Merge logic: prefer cloud cart but keep unique local items if desired
+                // For now, let's just use cloud cart if it exists to ensure cross-device consistency
+                return cloudCart;
+              });
+            }
+          })
+          .catch(err => console.error("CLOUD_CART_FETCH_FAILURE:", err));
       } else {
         setUser(null);
       }
@@ -61,7 +93,23 @@ function AppContent() {
 
   useEffect(() => {
     localStorage.setItem('threads-cart', JSON.stringify(cart));
-  }, [cart]);
+    
+    // Sync cart to backend if user is logged in
+    if (user) {
+      const controller = new AbortController();
+      fetch('/api/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, items: cart }),
+        signal: controller.signal
+      }).catch(err => {
+        if (err.name !== 'AbortError') {
+          console.error("CART_BACKEND_SYNC_FAILURE:", err);
+        }
+      });
+      return () => controller.abort();
+    }
+  }, [cart, user]);
 
   useEffect(() => {
     localStorage.setItem('threads-wishlist', JSON.stringify(wishlist));

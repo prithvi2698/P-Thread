@@ -102,6 +102,20 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  app.get('/api/firestore-health', async (req, res) => {
+    try {
+      if (!firestore) return res.status(503).json({ status: 'error', message: 'FIRESTORE_NOT_INITIALIZED' });
+      await firestore.collection('system').doc('health').set({
+        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'Operational'
+      });
+      res.json({ status: 'ok', database: firebaseConfig.firestoreDatabaseId });
+    } catch (err: any) {
+      console.error('FIRESTORE_HEALTH_FALURE:', err);
+      res.status(500).json({ status: 'error', message: err.message });
+    }
+  });
+
   // Product Sector
   app.get('/api/products', (req, res) => {
     try {
@@ -125,14 +139,28 @@ async function startServer() {
 
   // API Routes
   app.post('/api/auth-sync', async (req, res) => {
-    const { uid, email, displayName } = req.body;
+    const { uid, email, displayName, name, photoURL } = req.body;
+    const finalName = name || displayName;
     try {
+      // Local SQLite Sync
       const stmt = sqliteDb.prepare('INSERT OR REPLACE INTO users (uid, email, display_name) VALUES (?, ?, ?)');
-      stmt.run(uid, email, displayName);
+      stmt.run(uid, email, finalName || null);
+
+      // Firestore Cloud Sync
+      if (firestore) {
+        await firestore.collection('users').doc(uid).set({
+          uid,
+          email,
+          displayName: finalName || null,
+          photoURL: photoURL || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+
       res.json({ success: true });
     } catch (err) {
-      console.error('SQL_AUTH_SYNC_FAILURE:', err);
-      res.status(500).json({ error: 'SQL sync failed' });
+      console.error('AUTH_SYNC_FAILURE:', err);
+      res.status(500).json({ error: 'Auth sync failed' });
     }
   });
 
@@ -162,27 +190,95 @@ async function startServer() {
   });
 
   // Cart Persistence Sector
-  app.get('/api/cart', (req, res) => {
-    const { uid } = req.query;
+  app.get('/api/cart', async (req, res) => {
+    const { uid } = req.query as { uid: string };
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
     
     try {
+      let cloudItems = null;
+      if (firestore) {
+        try {
+          const cartDoc = await firestore.collection('users').doc(uid).collection('cart').doc('default').get();
+          if (cartDoc.exists) {
+            cloudItems = cartDoc.data()?.items;
+          }
+        } catch (innerErr) {
+          console.warn('FIRESTORE_RETR_FAILURE // USING_SQL_CACHE');
+        }
+      }
+
+      if (cloudItems !== null) {
+        return res.json(cloudItems);
+      }
+
       const row = sqliteDb.prepare('SELECT items FROM cart WHERE uid = ?').get(uid) as { items: string } | undefined;
       res.json(row ? JSON.parse(row.items) : []);
     } catch (err) {
+      console.error('CART_RETR_CRITICAL_FAILURE:', err);
       res.status(500).json({ error: 'CART_FETCH_FAILURE' });
     }
   });
 
-  app.post('/api/cart', (req, res) => {
+  // Review Sector
+  app.get('/api/reviews/:productId', async (req, res) => {
+    const { productId } = req.params;
+    try {
+      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
+      const snapshot = await firestore.collection('reviews')
+        .where('productId', '==', productId)
+        .orderBy('createdAt', 'desc')
+        .get();
+      const reviews = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        createdAt: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
+      }));
+      res.json(reviews);
+    } catch (err) {
+      console.error('REVIEW_FETCH_FAILURE:', err);
+      res.status(500).json([]);
+    }
+  });
+
+  app.post('/api/reviews', async (req, res) => {
+    const { productId, rating, comment, userName, userId } = req.body;
+    if (!userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+
+    try {
+      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
+      const docRef = await firestore.collection('reviews').add({
+        productId,
+        rating,
+        comment,
+        userName,
+        userId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      res.json({ id: docRef.id });
+    } catch (err) {
+      console.error('REVIEW_SUBMISSION_FAILURE:', err);
+      res.status(500).json({ error: 'REVIEW_SUBMISSION_FAILURE' });
+    }
+  });
+
+  app.post('/api/cart', async (req, res) => {
     const { uid, items } = req.body;
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
 
     try {
       sqliteDb.prepare('INSERT OR REPLACE INTO cart (uid, items, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
         .run(uid, JSON.stringify(items));
+
+      if (firestore) {
+        await firestore.collection('users').doc(uid).collection('cart').doc('default').set({
+          items,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
       res.json({ success: true });
     } catch (err) {
+      console.error('CART_SYNC_FAILURE:', err);
       res.status(500).json({ error: 'CART_SYNC_FAILURE' });
     }
   });

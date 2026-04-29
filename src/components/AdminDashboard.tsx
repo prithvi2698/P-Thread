@@ -45,8 +45,11 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      // Temporarily disabled for Auth-only mode
-      setOrders([]);
+      const resp = await fetch('/api/admin/orders', {
+        headers: { 'x-admin-email': adminEmail }
+      });
+      const data = await resp.json();
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Admin Order Fetch Failure:", err);
     } finally {
@@ -57,10 +60,12 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      setInventory(PRODUCTS as any[]);
+      const resp = await fetch('/api/products');
+      const data = await resp.json();
+      setInventory(Array.isArray(data) ? data : PRODUCTS as any[]);
     } catch (err) {
       console.error("Admin Inventory Fetch Failure:", err);
-      setInventory([]);
+      setInventory(PRODUCTS as any[]);
     } finally {
       setLoading(false);
     }
@@ -75,7 +80,14 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
 
   const updateStatus = async (orderId: string, newStatus: string) => {
     try {
-      // Temporarily disabled for Auth-only mode
+      await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     } catch (err) {
       console.error("Status Update failure:", err);
@@ -84,7 +96,14 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
 
   const updateStock = async (productId: string, newStock: number) => {
     try {
-      // Temporarily disabled for Auth-only mode
+      await fetch(`/api/admin/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ stock: newStock })
+      });
       setInventory(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
     } catch (err) {
       console.error("Stock update failure:", err);
