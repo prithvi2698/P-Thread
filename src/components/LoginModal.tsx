@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Lock, ArrowRight, Shield, Command } from 'lucide-react';
-import { auth, googleProvider, facebookProvider } from '../lib/firebase';
-import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, FacebookAuthProvider } from 'firebase/auth';
+import { auth, googleProvider } from '../lib/firebase';
+import { 
+  signInWithPopup, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  updateProfile, 
+  GoogleAuthProvider,
+  fetchSignInMethodsForEmail,
+  linkWithCredential,
+  AuthCredential
+} from 'firebase/auth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -14,11 +23,25 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [verificationError, setVerificationError] = useState('');
+  const [pendingCredential, setPendingCredential] = useState<AuthCredential | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     name: ''
   });
+
+  const handleLinkingIfPending = async (user: any) => {
+    if (pendingCredential) {
+      try {
+        await linkWithCredential(user, pendingCredential);
+        setPendingCredential(null);
+        setVerificationError('SYNC_SUCCESS: Accounts linked successfully.');
+      } catch (linkError: any) {
+        console.error("Linking failed:", linkError);
+        setVerificationError(`LINK_FAILURE: ${linkError.message}`);
+      }
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -26,6 +49,7 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
+        await handleLinkingIfPending(result.user);
         onLogin({
           name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
           email: result.user.email || '',
@@ -37,35 +61,23 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
       console.error("Google Sync Failure:", error);
       if (error.code === 'auth/unauthorized-domain') {
         setVerificationError('DOMAIN_UNAUTHORIZED: Visit Firebase Console > Auth > Settings > Authorized Domains to allow this URL.');
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        const credential = GoogleAuthProvider.credentialFromError(error);
+        setPendingCredential(credential);
+        const email = error.customData?.email || formData.email;
+        if (email) {
+          try {
+            const methods = await fetchSignInMethodsForEmail(auth, email);
+            const providerName = methods[0]?.split('.')[0] || 'another provider';
+            setVerificationError(`CONFLICT: ${email} is linked to ${providerName.toUpperCase()}. Login via ${providerName.toUpperCase()} to auto-sync.`);
+          } catch {
+            setVerificationError('CONFLICT: Account exists with different provider. Login with existing provider to link.');
+          }
+        } else {
+          setVerificationError('CONFLICT: Account exists with different provider. Login with existing provider to link.');
+        }
       } else {
         setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFacebookLogin = async () => {
-    setIsLoading(true);
-    setVerificationError('');
-    try {
-      const result = await signInWithPopup(auth, facebookProvider);
-      if (result.user) {
-        onLogin({
-          name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
-          email: result.user.email || '',
-          uid: result.user.uid
-        });
-        onClose();
-      }
-    } catch (error: any) {
-      console.error("Facebook Sync Failure:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        setVerificationError('DOMAIN_UNAUTHORIZED: Visit Firebase Console > Auth > Settings > Authorized Domains to allow this URL.');
-      } else if (error.code === 'auth/account-exists-with-different-credential') {
-        setVerificationError('ACCOUNT_CONFLICT: An account already exists with this email using a different provider.');
-      } else {
-        setVerificationError(error.message || 'FACEBOOK_AUTH_PROTOCOL_FAILURE');
       }
     } finally {
       setIsLoading(false);
@@ -82,6 +94,7 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
         const result = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
         await updateProfile(result.user, { displayName: formData.name });
         
+        await handleLinkingIfPending(result.user);
         onLogin({
           name: formData.name,
           email: formData.email,
@@ -90,6 +103,7 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
         onClose();
       } else {
         const result = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        await handleLinkingIfPending(result.user);
         onLogin({
           name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
           email: result.user.email || '',
@@ -99,7 +113,14 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
       }
     } catch (error: any) {
       console.error("Authentication failure:", error);
-      setVerificationError(error.message || 'AUTHENTICATION_PROTOCOL_FAILURE');
+      if (error.code === 'auth/account-exists-with-different-credential') {
+        // For email/password, there's no "pending credential" from the error itself in the same way,
+        // but if they were trying to sync Facebook/Google and now signed in with email, we can link.
+        // Actually the error usually happens when choosing POPUP first.
+        setVerificationError('CONFLICT: Account already exists with this email. Please sign in with your original provider.');
+      } else {
+        setVerificationError(error.message || 'AUTHENTICATION_PROTOCOL_FAILURE');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -220,31 +241,18 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
                 <span className="absolute bg-surface px-4 text-[8px] font-black uppercase tracking-[0.4em] text-muted">Or Sync Via</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 <button 
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={isLoading}
-                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
+                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50 w-full"
                   title="Google Authentication"
                 >
                   <svg className={`w-3 h-3 fill-current ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24">
                     <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.908 3.152-2.004 4.168-1.504 1.504-3.692 2.112-5.836 2.112-4.148 0-7.796-3.328-7.796-7.48s3.648-7.48 7.796-7.48c2.4 0 4.14 1.056 5.4 2.208L20.208 5.4C18.156 3.48 15.624 2 12.48 2 6.444 2 2.06 6.84 2.06 13s4.384 11 10.42 11c3.28 0 5.76-1.08 7.68-3.12 1.98-1.92 2.616-4.668 2.616-6.96 0-.6-.048-1.296-.144-1.92h-10.152z" />
                   </svg>
                   Google
-                </button>
-
-                <button 
-                  type="button"
-                  onClick={handleFacebookLogin}
-                  disabled={isLoading}
-                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
-                  title="Facebook Authentication"
-                >
-                  <svg className={`w-3 h-3 fill-current ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                  </svg>
-                  Facebook
                 </button>
               </div>
             </form>

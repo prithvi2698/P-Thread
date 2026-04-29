@@ -77,7 +77,18 @@ export default function ProductModal({
     }
   };
 
-  const images = (product.images && product.images.length > 0) ? product.images : [product.image];
+  const getImages = () => {
+    const list: string[] = [];
+    if (product.image) list.push(product.image);
+    if (product.images && product.images.length > 0) {
+      product.images.forEach(img => {
+        if (img && !list.includes(img)) list.push(img);
+      });
+    }
+    return list.length > 0 ? list : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop'];
+  };
+
+  const images = getImages();
 
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
@@ -200,7 +211,7 @@ export default function ProductModal({
                   <AnimatePresence mode="wait">
                     <motion.img 
                       key={currentImageIndex}
-                      src={images[currentImageIndex] || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
+                      src={images[currentImageIndex] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop'} 
                       alt={`${product.name} ${currentImageIndex + 1}`} 
                       initial={{ opacity: 0, scale: 1.1 }}
                       animate={{ 
@@ -218,7 +229,7 @@ export default function ProductModal({
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+                        target.src = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop';
                       }}
                     />
                   </AnimatePresence>

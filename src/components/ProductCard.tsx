@@ -59,13 +59,13 @@ export default function ProductCard({
             filter: { duration: 0.4 }
           }}
           viewport={{ once: true }}
-          src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
+          src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop'} 
           alt={product.name} 
           className="w-full h-full object-contain p-4"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
-            target.src = 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop';
+            target.src = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop';
           }}
         />
 
