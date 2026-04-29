@@ -4,8 +4,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '1',
     name: 'GOKU BLACK // DARK ASCENSION',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: '300GSM Premium Cotton. Custom Boxy Fit. High-density silkscreened graphic from the 2026 Latest Manifest Archive.',
     image: 'https://lh3.googleusercontent.com/d/1pJiRzzIZgQ7bxhXfpMf8WswEawwrOzGG',
     category: 'Limited',
@@ -24,8 +24,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '2',
     name: 'LUFFY // LEGACY GEAR',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Thread your legacy. 2026 Latest Design. high-density boxy cotton. Engineered for the bold.',
     image: 'https://lh3.googleusercontent.com/d/1QBtS3QYk0bWCQM_ZPilgSfTLMggVU9hK',
     category: 'Graphic',
@@ -43,8 +43,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '3',
     name: 'ZENITSU // ENERGY OVERSIZE',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Thread your energy. 2026 Latest Design. Lightning split-panel manifestation on matte black fabric.',
     image: 'https://lh3.googleusercontent.com/d/1qkwBtdzbUz9zChLhQS0zHPNWeuwlM147',
     category: 'Limited',
@@ -62,8 +62,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '5',
     name: 'INOSUKE // STORY ARCHIVE',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Thread your story. 2026 Latest Design. Raw tactical graphics on distressed cotton. Animal-instinct aesthetic.',
     image: 'https://lh3.googleusercontent.com/d/1Pvx0GU3IrhZU5lT5vr5GhcXoRMwnbHHI',
     category: 'Graphic',
@@ -81,8 +81,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '6',
     name: 'BEE // BUILT DIFFERENT',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Thread the impact. 2026 Latest Design. Industrial tactical manifests on heavy block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1O0BorIsFLl5_lfT7IoS5kTAUj2AQhSFT',
     category: 'Graphic',
@@ -95,8 +95,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '7',
     name: 'GEAR 5 // POWER WITHIN',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Ultimate transformation. 2026 Latest Design. White-on-white high density print with technical shadow accents.',
     image: 'https://lh3.googleusercontent.com/d/1ePTmCpqpjrup_XFPguyvbz3LyuVUhcsP',
     category: 'Limited',
@@ -115,8 +115,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '9',
     name: 'Sukuna',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Surgical tactical graphics on heavy-weight cotton. 2026 Latest Design. Engineered for the spiritual transition.',
     image: 'https://lh3.googleusercontent.com/d/1tE_ANdTtPJuW09BW8IhzSULm5FM1e_nT',
     category: 'Limited',
@@ -130,8 +130,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '10',
     name: 'Gojo // Satoru',
-    price: 400,
-    originalPrice: 500,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Thread your manifest. 2026 Latest Design. High-density tactical print on premium 300GSM cotton. Engineered for the archival transition. Limited manifestation.',
     image: 'https://lh3.googleusercontent.com/d/1aRVWIinbfZRRHAjz1x7OJI_yo9aEmpA5',
     category: 'Graphic',
@@ -149,8 +149,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '11',
     name: 'BTS // QUOTES',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1I1ZzGIA3FTTBNjNJaxujATgpbk4Pj-Kv',
     category: 'Limited',
@@ -161,8 +161,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '12',
     name: 'BTS // JUNGKOOOK',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1-qqsP4Bd-yHaYpgXzccA-HgaokPaqzfQ',
     category: 'Limited',
@@ -173,8 +173,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '13',
     name: 'BTS // J-HOPE',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/14oSCdYcxgBiINYX9XBqlJGprkiR0K3ca',
     category: 'Limited',
@@ -185,8 +185,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '14',
     name: 'BTS // YOONGI',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1iTokpfvrZSG5VcWdifWipe0wR1Ce2d53',
     category: 'Limited',
@@ -197,8 +197,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '16',
     name: 'BTS // TAEHYUNG',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1jK2BJ0dxMadVo6qc_PFTxXMZM52DZyKA',
     category: 'Limited',
@@ -209,8 +209,8 @@ export const PRODUCTS: Product[] = [
   {
     id: '17',
     name: 'BTS // JIMIN',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1rgdJNKNVYsF0O1wf_vH1TphP3-LKF0Fa',
     category: 'Limited',
@@ -221,24 +221,13 @@ export const PRODUCTS: Product[] = [
   {
     id: '18',
     name: 'BTS // JIN',
-    price: 450,
-    originalPrice: 550,
+    price: 1000,
+    originalPrice: 1200,
     description: 'Protocol BTS // ARCHIVE manifestation. 2026 Latest Design. High-density tactical print on premium block-fit cotton.',
     image: 'https://lh3.googleusercontent.com/d/1ttXBiC5lrEadXeEq3JjsDPVWRZ-FuOni',
     category: 'Limited',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     colors: [{ name: 'Onyx Black', hex: '#000000' }, { name: 'Arctic White', hex: '#FFFFFF' }],
     isNew: true
-  },
-  {
-    id: '8',
-    name: 'STUDIO // PREMIUM PACKING',
-    description: 'Archival-grade packaging manifestation. Engineered for protection. Serialized studio branding.',
-    image: 'https://lh3.googleusercontent.com/d/1Qt4uhyP4MVN2Cv9hX8et1UwJxbG_af_0',
-    category: 'Studio_Packing',
-    sizes: ['ONE_SIZE'],
-    colors: [
-      { name: 'Archival Grey', hex: '#333333' }
-    ]
   }
 ];

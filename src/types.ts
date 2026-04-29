@@ -5,7 +5,7 @@ export interface Product {
   originalPrice?: number;
   description: string;
   image: string;
-  category: 'Essentials' | 'Graphic' | 'Limited' | 'Studio_Packing';
+  category: 'Essentials' | 'Graphic' | 'Limited';
   sizes: string[];
   colors: { name: string; hex: string; imageIndex?: number }[];
   isNew?: boolean;

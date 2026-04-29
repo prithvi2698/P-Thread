@@ -61,7 +61,7 @@ export default function ProductCard({
           viewport={{ once: true }}
           src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
           alt={product.name} 
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain p-4"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
@@ -79,7 +79,7 @@ export default function ProductCard({
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             src={product.images![1]}
             alt={`${product.name} alternate manifestation`}
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            className="absolute inset-0 w-full h-full object-contain p-4 pointer-events-none"
             referrerPolicy="no-referrer"
           />
         )}

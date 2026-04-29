@@ -67,6 +67,7 @@ export function initializeSql() {
       name TEXT NOT NULL,
       description TEXT,
       price REAL,
+      original_price REAL,
       category TEXT,
       image TEXT,
       "images" JSON,
@@ -76,6 +77,14 @@ export function initializeSql() {
       is_archived INTEGER DEFAULT 0
     )
   `);
+
+  // Migration: Add original_price if missing
+  const tableInfo = db.prepare("PRAGMA table_info(products)").all() as any[];
+  const hasOriginalPrice = tableInfo.some(col => col.name === 'original_price');
+  if (!hasOriginalPrice) {
+    console.log('MIGRATING_SQL_ARCHIVE // ADDING_ORIGINAL_PRICE_COLUMN');
+    db.exec('ALTER TABLE products ADD COLUMN original_price REAL');
+  }
 }
 
 export function seedProducts(products: any[]) {
@@ -85,8 +94,8 @@ export function seedProducts(products: any[]) {
   if (products.length > 0) {
     console.log('SYNCING_ARCHIVE // Core_Acquisition_Series_01');
     const insert = db.prepare(`
-      INSERT OR IGNORE INTO products (id, name, description, price, category, image, images, colors, sizes, stock)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO products (id, name, description, price, original_price, category, image, images, colors, sizes, stock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     db.transaction(() => {
@@ -96,6 +105,7 @@ export function seedProducts(products: any[]) {
           p.name, 
           p.description || '', 
           p.price || 0, 
+          p.originalPrice || p.price || 0,
           p.category, 
           p.image || (p.images && p.images[0]) || null,
           JSON.stringify(p.images || []), 

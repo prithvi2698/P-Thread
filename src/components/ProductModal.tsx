@@ -77,7 +77,7 @@ export default function ProductModal({
     }
   };
 
-  const images = product.images || [product.image];
+  const images = (product.images && product.images.length > 0) ? product.images : [product.image];
 
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
@@ -134,7 +134,7 @@ export default function ProductModal({
 
           {/* Left: Image Gallery */}
           <div 
-            className="w-full md:w-1/2 aspect-square md:aspect-auto h-auto md:h-full bg-bg flex items-center justify-center relative group p-6 md:p-8 overflow-hidden shrink-0 cursor-zoom-in"
+            className="w-full md:w-1/2 aspect-square bg-bg flex items-center justify-center relative group overflow-hidden shrink-0 cursor-zoom-in"
             onMouseEnter={() => {
               if (window.innerWidth >= 768) setIsZoomed(true);
             }}
@@ -202,19 +202,19 @@ export default function ProductModal({
                       key={currentImageIndex}
                       src={images[currentImageIndex] || 'https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000&auto=format&fit=crop'} 
                       alt={`${product.name} ${currentImageIndex + 1}`} 
-                      initial={{ opacity: 0, scale: 1.4, x: 80 }}
+                      initial={{ opacity: 0, scale: 1.1 }}
                       animate={{ 
                         opacity: 1, 
                         scale: (isZoomed && window.innerWidth >= 768) ? 2 : 1, 
                         x: 0,
                         transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`
                       }}
-                      exit={{ opacity: 0, scale: 0.9, x: -40 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ 
-                        duration: isZoomed ? 0.2 : 0.6, 
-                        ease: isZoomed ? "linear" : [0.16, 1, 0.3, 1] 
+                        duration: isZoomed ? 0.15 : 0.4, 
+                        ease: isZoomed ? "linear" : [0.22, 1, 0.36, 1] 
                       }}
-                      className="w-full h-full object-contain pointer-events-none md:pointer-events-auto"
+                      className="w-full h-full object-contain pointer-events-none md:pointer-events-auto scale-105"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
@@ -260,22 +260,24 @@ export default function ProductModal({
                         <div className="absolute inset-y-2 right-0 w-[1px] bg-accent opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
 
-                      <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex gap-1.5">
-                        {images.map((_, idx) => (
+                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+                        {images.map((img, idx) => (
                           <button 
                             key={idx}
                             onClick={() => setCurrentImageIndex(idx)}
-                            className={`w-1.5 h-1.5 rounded-full transition-all ${currentImageIndex === idx ? 'bg-accent w-4' : 'bg-white/20'}`}
-                          />
+                            className={`w-10 h-10 border transition-all overflow-hidden bg-surface ${currentImageIndex === idx ? 'border-accent scale-110 shadow-lg' : 'border-white/10 opacity-60 hover:opacity-100'}`}
+                          >
+                            <img src={img} className="w-full h-full object-cover" alt={`Archive Thumb ${idx}`} referrerPolicy="no-referrer" />
+                          </button>
                         ))}
                       </div>
                     </>
                   )}
                 </div>
              )}
-             <div className="absolute inset-8 border border-white/5 pointer-events-none" />
-             <div className="absolute top-8 left-8 w-6 h-[1px] bg-accent" />
-             <div className="absolute top-8 left-8 h-6 w-[1px] bg-accent" />
+             <div className="absolute inset-4 border border-white/5 pointer-events-none" />
+             <div className="absolute top-4 left-4 w-6 h-[1px] bg-accent" />
+             <div className="absolute top-4 left-4 h-6 w-[1px] bg-accent" />
 
              {product.video && !showVideo && (
                 <motion.button 

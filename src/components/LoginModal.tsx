@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, Lock, ArrowRight, Shield, Command } from 'lucide-react';
-import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth, googleProvider, facebookProvider } from '../lib/firebase';
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, FacebookAuthProvider } from 'firebase/auth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -39,6 +39,33 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
         setVerificationError('DOMAIN_UNAUTHORIZED: Visit Firebase Console > Auth > Settings > Authorized Domains to allow this URL.');
       } else {
         setVerificationError(error.message || 'GOOGLE_AUTH_PROTOCOL_FAILURE');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    setIsLoading(true);
+    setVerificationError('');
+    try {
+      const result = await signInWithPopup(auth, facebookProvider);
+      if (result.user) {
+        onLogin({
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'ACQUIRER_01',
+          email: result.user.email || '',
+          uid: result.user.uid
+        });
+        onClose();
+      }
+    } catch (error: any) {
+      console.error("Facebook Sync Failure:", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setVerificationError('DOMAIN_UNAUTHORIZED: Visit Firebase Console > Auth > Settings > Authorized Domains to allow this URL.');
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        setVerificationError('ACCOUNT_CONFLICT: An account already exists with this email using a different provider.');
+      } else {
+        setVerificationError(error.message || 'FACEBOOK_AUTH_PROTOCOL_FAILURE');
       }
     } finally {
       setIsLoading(false);
@@ -190,21 +217,34 @@ export default function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps
 
               <div className="relative flex items-center justify-center py-4">
                 <div className="w-full h-[1px] bg-white/5" />
-                <span className="absolute bg-surface px-4 text-[8px] font-black uppercase tracking-[0.4em] text-muted">Or Login Via</span>
+                <span className="absolute bg-surface px-4 text-[8px] font-black uppercase tracking-[0.4em] text-muted">Or Sync Via</span>
               </div>
 
-              <div className="flex justify-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button 
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={isLoading}
-                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-12 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
+                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
                   title="Google Authentication"
                 >
                   <svg className={`w-3 h-3 fill-current ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24">
                     <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.908 3.152-2.004 4.168-1.504 1.504-3.692 2.112-5.836 2.112-4.148 0-7.796-3.328-7.796-7.48s3.648-7.48 7.796-7.48c2.4 0 4.14 1.056 5.4 2.208L20.208 5.4C18.156 3.48 15.624 2 12.48 2 6.444 2 2.06 6.84 2.06 13s4.384 11 10.42 11c3.28 0 5.76-1.08 7.68-3.12 1.98-1.92 2.616-4.668 2.616-6.96 0-.6-.048-1.296-.144-1.92h-10.152z" />
                   </svg>
-                  Google Terminal Sync
+                  Google
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleFacebookLogin}
+                  disabled={isLoading}
+                  className="flex items-center justify-center gap-3 bg-bg border border-white/10 py-4 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all group disabled:opacity-50"
+                  title="Facebook Authentication"
+                >
+                  <svg className={`w-3 h-3 fill-current ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                  Facebook
                 </button>
               </div>
             </form>

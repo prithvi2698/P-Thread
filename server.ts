@@ -89,6 +89,7 @@ async function startServer() {
       
       const mapped = products.map((p: any) => ({
         ...p,
+        originalPrice: p.original_price,
         images: JSON.parse(p.images || '[]'),
         colors: JSON.parse(p.colors || '[]'),
         sizes: JSON.parse(p.sizes || '[]'),

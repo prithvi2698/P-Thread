@@ -278,12 +278,12 @@ function AppContent() {
             <main className="flex flex-col gap-24 md:gap-32">
               <Hero />
               <ProductList 
-                products={products.filter(p => p.category !== 'Studio_Packing' && !p.name.startsWith('BTS //'))} 
+                products={products.filter(p => !p.name.startsWith('BTS //'))} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
                 onViewDetails={setSelectedProduct}
-                title="2026 Latest Dispatch"
+                title="BTS // Global Archive"
                 collectionSubtitle="Archival_Sync_Active"
                 id="series-01"
               />
@@ -293,22 +293,10 @@ function AppContent() {
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
                 onViewDetails={setSelectedProduct}
-                title="BTS // Global Archive"
+                title="BTS // Signature Series"
                 collectionSubtitle="Latest_Manifest_v02"
                 id="bts-archive"
                 accentColor="#8b5cf6"
-              />
-              <ProductList 
-                products={products.filter(p => p.category === 'Studio_Packing')} 
-                onAddToCart={addToCart}
-                onWishlistToggle={toggleWishlist}
-                wishlist={wishlist}
-                onViewDetails={setSelectedProduct}
-                title="Studio_Packing"
-                collectionSubtitle="Logistics_Support"
-                id="studio-packing"
-                showFilters={false}
-                variant="poster"
               />
             </main>
           } />
