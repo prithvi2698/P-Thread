@@ -74,6 +74,13 @@ async function startServer() {
     console.error('FIREBASE_ADMIN_INIT_FAILURE:', firebaseErr);
   }
 
+  // Check Resend Status
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_INIT_WARNING // RESEND_API_KEY is missing. Email dispatch will fail.');
+  } else {
+    console.log('RESEND_INIT_SUCCESS // Key detected.');
+  }
+
   try {
     console.log('STARTING_SERVER_PHASE // DB_INIT');
     initializeSql();
@@ -124,7 +131,17 @@ async function startServer() {
   app.use(express.json());
 
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    const health = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      services: {
+        sqlite: !!sqliteDb,
+        firestore: !!firestore,
+        razorpay: !!process.env.RAZORPAY_KEY_ID && !!process.env.RAZORPAY_KEY_SECRET,
+        resend: !!process.env.RESEND_API_KEY
+      }
+    };
+    res.json(health);
   });
 
   app.get('/api/firestore-health', async (req, res) => {
