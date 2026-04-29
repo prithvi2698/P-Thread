@@ -228,7 +228,7 @@ function AppContent() {
             onClick={handleLogoClick}
             className="vertical-text font-black text-2xl md:text-3xl tracking-[0.2em] uppercase text-ink/80 hover:text-accent transition-colors"
           >
-            P-THREAD STUDIO
+            P-THREAD
           </Link>
           
           <div className="flex flex-col gap-8 py-8 items-center border-y border-white/5">

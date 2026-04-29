@@ -12,11 +12,11 @@ export default function Footer({ onLoginToggle, user, onAdminToggle }: FooterPro
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-12 md:space-y-0">
         <div className="space-y-4">
           <div className="flex flex-col">
-            <h2 className="text-2xl font-black tracking-tighter uppercase leading-none">P-THREAD STUDIO</h2>
-            <span className="text-[8px] font-black tracking-[0.5em] text-accent uppercase leading-none mt-1">Studio_Operations</span>
+            <h2 className="text-2xl font-black tracking-tighter uppercase leading-none">P-THREAD</h2>
+            <span className="text-[8px] font-black tracking-[0.5em] text-accent uppercase leading-none mt-1">Operations</span>
           </div>
           <p className="max-w-[200px] text-[11px] uppercase font-black text-muted leading-relaxed tracking-widest">
-            ENGINEERED FOR PERMANENCE. ARCHIVE 01 DISPATCHED BY P-THREAD STUDIO.
+            ENGINEERED FOR PERMANENCE. ARCHIVE 01 DISPATCHED BY P-THREAD.
           </p>
         </div>
 
@@ -25,12 +25,12 @@ export default function Footer({ onLoginToggle, user, onAdminToggle }: FooterPro
            {user?.email === 'prithvi2698@gmail.com' ? (
              <button onClick={onAdminToggle} className="text-accent underline underline-offset-4 decoration-accent/30 hover:decoration-accent transition-all">ADMIN_TERMINAL</button>
            ) : (
-             <button onClick={onLoginToggle} className="hover:text-accent transition-colors opacity-30 hover:opacity-100">STUDIO_ACCESS</button>
+             <button onClick={onLoginToggle} className="hover:text-accent transition-colors opacity-30 hover:opacity-100">ACCESS_TERMINAL</button>
            )}
         </div>
 
         <div className="text-[9px] font-black uppercase tracking-[0.4em] text-muted border-t md:border-t-0 md:border-l border-white/10 pt-8 md:pt-0 md:pl-8 md:h-10 flex items-center w-full md:w-auto">
-          &copy; 2026 P-THREAD STUDIO_CORP.
+          &copy; 2026 P-THREAD_CORP.
         </div>
       </div>
     </footer>

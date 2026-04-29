@@ -17,7 +17,7 @@ declare const Razorpay: any;
 
 const VALID_COUPONS: Record<string, number> = {
   'SERIES01': 100, // Flat 100 off
-  'STUDIO20': 200, // Flat 200 off
+  'P20': 200, // Flat 200 off
   'ARCHIVE50': 500, // Flat 500 off
 };
 
@@ -54,6 +54,14 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
     // Focus management: move focus to step heading when step changes
     if (stepHeadingRef.current) {
       stepHeadingRef.current.focus();
+    }
+
+    // Proactive Razorpay script loading
+    if (typeof (window as any).Razorpay === 'undefined') {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
     }
   }, [step]);
 
@@ -178,20 +186,33 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
     } else {
       // IDENTITY VERIFICATION CHECKPOINT
       if (typeof (window as any).Razorpay === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.async = true;
-        document.body.appendChild(script);
-        setProcessState('GATEWAY_SYNC_REQUIRED // PLEASE_RETRY_IN_A_MOMENT');
+        setProcessState('GATEWAY_SYNC_PENDING // PLEASE_WAIT');
+        setIsProcessing(true);
+        
+        let attempts = 0;
+        const checkScript = setInterval(() => {
+          attempts++;
+          if (typeof (window as any).Razorpay !== 'undefined') {
+            clearInterval(checkScript);
+            setIsProcessing(false);
+            handleProceed(); // Recursive call once loaded
+          } else if (attempts > 50) {
+            clearInterval(checkScript);
+            setIsProcessing(false);
+            setProcessState('GATEWAY_SYNC_FAILED // CHECK_CONNECTIVITY');
+          }
+        }, 200);
         return;
       }
 
       if (!user) {
+        setProcessState('AUTH_REQUIRED // SYNCHRONIZING_TERMINAL');
         onLoginToggle();
         return;
       }
 
       // Razorpay Integration
+      setIsProcessing(true);
       try {
         setProcessState('INITIATING_SECURE_GATEWAY');
         const orderRes = await fetch('/api/create-order', {
@@ -200,19 +221,31 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           body: JSON.stringify({ amount: total })
         });
         
-        if (!orderRes.ok) throw new Error('ORDER_PROTOCOL_FAILURE');
+        if (!orderRes.ok) {
+          const errorData = await orderRes.json();
+          throw new Error(errorData.error || 'ORDER_PROTOCOL_FAILURE');
+        }
+        
         const orderData = await orderRes.json();
+        const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
+
+        if (!razorpayKey) {
+          throw new Error('VITE_RAZORPAY_KEY_ID_MISSING // Check environment variables');
+        }
+
+        if (razorpayKey.includes('YOUR_')) {
+          throw new Error(`VITE_RAZORPAY_KEY_ID_PLACEHOLDER // Real key required. Found: ${razorpayKey.substring(0, 10)}...`);
+        }
 
         const options = {
-          key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || "",
+          key: razorpayKey,
           amount: orderData.amount,
           currency: orderData.currency,
-          name: "P-THREAD STUDIO",
+          name: "P-THREAD",
           description: "ARCHIVE_ACQUISITION // SERIES_01",
           order_id: orderData.id,
           image: "https://drive.google.com/file/d/1aRVWIinbfZRRHAjz1x7OJI_yo9aEmpA5/view?usp=sharing",
           handler: async function (response: any) {
-            setIsProcessing(true);
             setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
             
             try {
@@ -283,8 +316,10 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
 
         const rzp = new (window as any).Razorpay(options);
         rzp.open();
-      } catch (err) {
+      } catch (err: any) {
         console.error("Order creation failure:", err);
+        setProcessState(`PROTOCOL_ERROR: ${err.message || 'GATEWAY_TIMEOUT'}`);
+        setIsProcessing(false);
       }
     }
   };
@@ -608,7 +643,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   <div className="space-y-2">
                     <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent">Summary manifest</span>
                     <p className="text-xs font-mono text-muted uppercase leading-relaxed">
-                      You are about to initiate a secure acquisition transfer of <span className="text-white">₹{total}</span> to P-THREAD STUDIO.
+                      You are about to initiate a secure acquisition transfer of <span className="text-white">₹{total}</span> to P-THREAD.
                       All transactions are protected via 256-bit AES encryption.
                     </p>
                   </div>

@@ -146,7 +146,7 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                   <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase block mb-1">
                     Control_Center // v1.0
                   </span>
-                  <h2 className="text-2xl font-black uppercase tracking-tighter">Studio Operations</h2>
+                  <h2 className="text-2xl font-black uppercase tracking-tighter">Operations</h2>
                 </div>
               </div>
               

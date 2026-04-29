@@ -22,11 +22,15 @@ let razorpayInstance: Razorpay | null = null;
 
 function getRazorpay(): Razorpay {
   if (!razorpayInstance) {
-    const key = process.env.RAZORPAY_KEY_ID;
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!key || !secret) {
-      throw new Error('RAZORPAY_CREDENTIALS_MISSING // Please define RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment.');
+    const key = process.env.RAZORPAY_KEY_ID?.trim();
+    const secret = process.env.RAZORPAY_KEY_SECRET?.trim();
+    if (!key || !secret || key.includes('YOUR_') || secret.includes('YOUR_')) {
+      throw new Error('RAZORPAY_CREDENTIALS_INVALID // Please ensure you have replaced placeholders with real live keys in the environment settings.');
     }
+    const isLive = key.startsWith('rzp_live_');
+    const isTest = key.startsWith('rzp_test_');
+    console.log(`RAZORPAY_INIT // ID: ${key.substring(0, 10)}... // SECRET_PREFIX: ${secret.substring(0, 4)}... // MODE: ${isLive ? 'LIVE' : isTest ? 'TEST' : 'UNKNOWN'}`);
+    
     razorpayInstance = new Razorpay({
       key_id: key,
       key_secret: secret,
@@ -417,9 +421,14 @@ async function startServer() {
       };
       const order = await razorpay.orders.create(options);
       res.json(order);
-    } catch (err) {
+    } catch (err: any) {
       console.error('RAZORPAY_ORDER_FAILURE:', err);
-      res.status(500).json({ error: 'ORDER_CREATION_FAILURE' });
+      // Return specific error if available from Razorpay
+      const errorMsg = err.error?.description || err.message || 'ORDER_CREATION_FAILURE';
+      res.status(500).json({ 
+        error: errorMsg,
+        details: err.error || null
+      });
     }
   });
 
@@ -499,12 +508,12 @@ async function startServer() {
 
       const resend = getResendClient();
       const { data, error } = await resend.emails.send({
-        from: 'P-THREAD STUDIO <onboarding@resend.dev>',
+        from: 'P-THREAD <onboarding@resend.dev>',
         to: [email],
         subject: 'ARCHIVE_SECURED // Acquisition Receipt Manifest',
         html: `
           <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
-            <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD STUDIO // ACQUISITION_RECEIPT</h1>
+            <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // ACQUISITION_RECEIPT</h1>
             <p style="font-size: 12px; color: #888;">Manifest_ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
             
             <div style="margin: 40px 0;">
@@ -568,7 +577,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`P-THREAD STUDIO Server running at http://0.0.0.0:${PORT}`);
+    console.log(`P-THREAD Server running at http://0.0.0.0:${PORT}`);
   });
 }
 

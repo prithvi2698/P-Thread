@@ -107,7 +107,7 @@ export default function Hero() {
 
           <div className="relative mb-4 md:mb-8 px-4 w-full">
             <h1 className="text-[2.2rem] sm:text-6xl md:text-9xl font-black tracking-[0.1em] sm:tracking-[0.2em] uppercase text-white drop-shadow-[0_0_50px_rgba(230,30,30,0.2)] relative z-10 leading-[1] sm:leading-none break-words">
-              P-THREAD<br className="sm:hidden" /> STUDIO
+              P-THREAD
             </h1>
           </div>
           

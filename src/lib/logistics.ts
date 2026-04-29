@@ -1,6 +1,6 @@
 /**
  * LOGISTICS_V1 // SERVICEABILITY_MANIFEST
- * Engineered for P-THREAD STUDIO Terminal
+ * Engineered for P-THREAD Terminal
  */
 
 // Tactical sectors that are currently clear for dispatch

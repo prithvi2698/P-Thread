@@ -66,7 +66,7 @@ export default function Header({
         <div className="w-8 h-8 bg-accent flex items-center justify-center font-black text-white text-xl shrink-0">P</div>
         <div className="flex flex-col overflow-hidden">
           <span className="text-sm md:text-2xl font-black tracking-tighter uppercase group-hover:text-accent transition-colors leading-none truncate">
-            P-THREAD<span className="hidden sm:inline"> STUDIO</span>
+            P-THREAD
           </span>
           <span className="text-[6px] md:text-[8px] font-black tracking-[0.5em] text-accent uppercase leading-none mt-1 truncate">Archive_Ops</span>
         </div>
