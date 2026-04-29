@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database } from 'lucide-react';
+import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database, RefreshCcw, Edit2, Check } from 'lucide-react';
 import { PRODUCTS } from '../constants';
 
 interface OrderItem {
@@ -41,6 +41,9 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [newOrderIdInput, setNewOrderIdInput] = useState('');
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -91,6 +94,48 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     } catch (err) {
       console.error("Status Update failure:", err);
+    }
+  };
+
+  const updateOrderId = async (oldId: string) => {
+    if (!newOrderIdInput.trim() || newOrderIdInput === oldId) {
+      setEditingOrderId(null);
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/admin/orders/${oldId}/update-id`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ newId: newOrderIdInput })
+      });
+      if (resp.ok) {
+        setOrders(prev => prev.map(o => o.id === oldId ? { ...o, id: newOrderIdInput } : o));
+        setEditingOrderId(null);
+      }
+    } catch (err) {
+      console.error("ID Update failure:", err);
+    }
+  };
+
+  const resendReceipt = async (orderId: string) => {
+    setResendingId(orderId);
+    try {
+      const resp = await fetch(`/api/admin/orders/${orderId}/resend`, {
+        method: 'POST',
+        headers: { 
+          'x-admin-email': adminEmail
+        }
+      });
+      if (resp.ok) {
+        alert('MANIFEST_RE_DISPATCHED // Email sequence successful');
+      }
+    } catch (err) {
+      console.error("Resend failure:", err);
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -244,7 +289,31 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                           <div className="flex flex-col xl:flex-row justify-between gap-8">
                             <div className="space-y-4">
                               <div className="flex items-center gap-4">
-                                <h3 className="text-sm font-black uppercase tracking-tighter">{order.id}</h3>
+                                {editingOrderId === order.id ? (
+                                  <div className="flex items-center gap-2">
+                                    <input 
+                                      value={newOrderIdInput}
+                                      onChange={(e) => setNewOrderIdInput(e.target.value.toUpperCase())}
+                                      className="bg-bg border border-accent p-1 text-[10px] font-mono outline-none"
+                                      autoFocus
+                                    />
+                                    <button onClick={() => updateOrderId(order.id)} className="text-green-500"><Check className="w-4 h-4" /></button>
+                                    <button onClick={() => setEditingOrderId(null)} className="text-muted"><X className="w-4 h-4" /></button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 group/id">
+                                    <h3 className="text-sm font-black uppercase tracking-tighter">{order.id}</h3>
+                                    <button 
+                                      onClick={() => {
+                                        setEditingOrderId(order.id);
+                                        setNewOrderIdInput(order.id);
+                                      }}
+                                      className="opacity-0 group-hover/id:opacity-100 transition-opacity p-1 hover:text-accent"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
                                 <div className={`flex items-center gap-2 text-[9px] font-black px-2 py-1 bg-surface border border-white/5 ${STATUS_CONFIG[order.status]?.color || 'text-muted'}`}>
                                   <StatusIcon className="w-3 h-3" />
                                   {order.status}
@@ -279,7 +348,17 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                             </div>
 
                             <div className="flex flex-col gap-3 min-w-[200px]">
-                              <span className="text-[8px] font-black text-muted uppercase tracking-widest">Update Sector Status</span>
+                              <div className="flex justify-between items-center">
+                                <span className="text-[8px] font-black text-muted uppercase tracking-widest">Update Sector Status</span>
+                                <button 
+                                  onClick={() => resendReceipt(order.id)}
+                                  disabled={resendingId === order.id}
+                                  className="text-[8px] font-black text-accent hover:text-white flex items-center gap-1 transition-colors uppercase"
+                                >
+                                  <RefreshCcw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
+                                  {resendingId === order.id ? 'SENDING...' : 'RESEND RECEIPT'}
+                                </button>
+                              </div>
                               <div className="grid grid-cols-2 gap-2">
                                 {['PENDING_DISPATCH', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map(s => (
                                   <motion.button

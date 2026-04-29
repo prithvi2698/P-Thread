@@ -48,7 +48,21 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [couponError, setCouponError] = useState('');
   const [activeCoupon, setActiveCoupon] = useState('');
   const [logisticsError, setLogisticsError] = useState('');
+  const [paymentError, setPaymentError] = useState('');
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    // Pre-fill user data if available
+    if (user && formData.email === '') {
+      const names = user.name.split(' ');
+      setFormData(prev => ({
+        ...prev,
+        email: user.email,
+        firstName: names[0] || '',
+        lastName: names.slice(1).join(' ') || ''
+      }));
+    }
+  }, [user]);
 
   useEffect(() => {
     // Focus management: move focus to step heading when step changes
@@ -116,6 +130,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [processState, setProcessState] = useState('');
+  const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
 
   const handleProceed = async () => {
     if (step === 1) {
@@ -145,6 +160,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       setLogisticsError('');
       setStep(step + 1);
     } else {
+      setPaymentError('');
       // IDENTITY VERIFICATION CHECKPOINT
       if (typeof (window as any).Razorpay === 'undefined') {
         setProcessState('GATEWAY_SYNC_PENDING // PLEASE_WAIT');
@@ -160,14 +176,15 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           } else if (attempts > 50) {
             clearInterval(checkScript);
             setIsProcessing(false);
-            setProcessState('GATEWAY_SYNC_FAILED // CHECK_CONNECTIVITY');
+            setPaymentError('GATEWAY_SYNC_FAILED // CHECK_CONNECTIVITY');
+            setProcessState('SYNC_FAILED');
           }
         }, 200);
         return;
       }
 
       if (!user) {
-        setProcessState('AUTH_REQUIRED // SYNCHRONIZING_TERMINAL');
+        setPaymentError('AUTH_REQUIRED // SYNCHRONIZING_TERMINAL');
         onLoginToggle();
         return;
       }
@@ -191,7 +208,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
 
         if (!razorpayKey || razorpayKey.includes('YOUR_')) {
-          setProcessState('RAZORPAY_KEY_MISSING // Configure VITE_RAZORPAY_KEY_ID in Settings');
+          setPaymentError('RAZORPAY_KEY_MISSING // Configure VITE_RAZORPAY_KEY_ID in Settings');
           setIsProcessing(false);
           return;
         }
@@ -236,7 +253,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               }
 
               // BACKEND SYNC: Send Email Receipt via API (Includes SQL and FIRESTORE Sync)
-              await fetch('/api/send-receipt', {
+              const receiptRes = await fetch('/api/send-receipt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -260,19 +277,24 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 })
               });
               
+              const receiptData = await receiptRes.json();
+              if (receiptData.orderId) {
+                setCompletedOrderId(receiptData.orderId);
+              }
+              
               setIsProcessing(false);
               setIsSuccess(true);
               onComplete();
             } catch (error: any) {
               console.error("Archival Sync Failure:", error);
-              setProcessState(`SYNC_ERROR: ${error.message || 'PLEASE_CONTACT_SUPPORT'}`);
+              setPaymentError(`SYNC_ERROR: ${error.message || 'PLEASE_CONTACT_SUPPORT'}`);
               setIsProcessing(false);
             }
           },
           modal: {
             ondismiss: function() {
               setIsProcessing(false);
-              setProcessState('ACQUISITION_ABORTED // RE-INITIATE_WHEN_READY');
+              setPaymentError('ACQUISITION_ABORTED // RE-INITIATE_WHEN_READY');
             }
           }
         };
@@ -281,7 +303,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         rzp.open();
       } catch (err: any) {
         console.error("Order creation failure:", err);
-        setProcessState(`PROTOCOL_ERROR: ${err.message || 'GATEWAY_TIMEOUT'}`);
+        setPaymentError(`PROTOCOL_ERROR: ${err.message || 'GATEWAY_TIMEOUT'}`);
         setIsProcessing(false);
       }
     }
@@ -313,6 +335,14 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         >
           <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase mb-4 block">Acquisition_Successful</span>
           <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-6">Archive Secured.</h2>
+          
+          {completedOrderId && (
+            <div className="mb-10 p-5 bg-surface border border-accent/20 inline-flex flex-col items-center">
+              <span className="text-[10px] font-black text-muted uppercase tracking-[0.4em] mb-2 block border-b border-white/5 pb-2 w-full">Manifest_ID</span>
+              <span className="text-2xl font-mono text-accent font-bold tracking-[0.2em]">{completedOrderId}</span>
+            </div>
+          )}
+
           <p className="text-xs font-mono text-muted uppercase tracking-widest max-w-md mx-auto mb-12 leading-relaxed">
             Your items have been allocated and are moving into the logistics grid. Serial numbers and tracking manifests will be dispatched to your terminal shortly.
           </p>
@@ -567,7 +597,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
 
             {/* Global Error Feedback */}
             <AnimatePresence>
-              {logisticsError && (
+              {(logisticsError || paymentError) && (
                 <motion.div 
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -576,7 +606,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 >
                   <p className="text-[10px] font-mono text-accent uppercase flex items-center gap-3">
                     <ShieldCheck className="w-3 h-3" />
-                    PROTOCOL_ERROR: {logisticsError}
+                    PROTOCOL_ERROR: {logisticsError || paymentError}
                   </p>
                 </motion.div>
               )}

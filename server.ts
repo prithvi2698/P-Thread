@@ -421,6 +421,130 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/admin/orders/:id/update-id', async (req, res) => {
+    const { id: oldId } = req.params;
+    const { newId } = req.body;
+    const email = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    if (!newId || newId.trim().length === 0) {
+      return res.status(400).json({ error: 'INVALID_ID_SEQUENCE' });
+    }
+
+    try {
+      if (firestore) {
+        try {
+          const docRef = firestore.collection('orders').doc(oldId);
+          const doc = await docRef.get();
+          if (doc.exists) {
+            const data = doc.data();
+            await firestore.collection('orders').doc(newId).set({
+              ...data,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            await docRef.delete();
+          }
+        } catch (fErr) {
+          console.error('FIRESTORE_ID_UPDATE_FAILURE:', fErr);
+        }
+      }
+
+      sqliteDb.transaction(() => {
+        // Since we are changing PK, we need to update children or use ON UPDATE CASCADE if it was set
+        // But manually updating is safer if PRAGMA foreign_keys = OFF
+        const updateOrder = sqliteDb.prepare('UPDATE orders SET id = ? WHERE id = ?');
+        const updateItems = sqliteDb.prepare('UPDATE order_items SET order_id = ? WHERE order_id = ?');
+        
+        updateItems.run(newId, oldId);
+        updateOrder.run(newId, oldId);
+      })();
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error('ID_UPDATE_FAILURE:', err);
+      res.status(500).json({ error: 'ID_UPDATE_FAILURE' });
+    }
+  });
+
+  app.post('/api/admin/orders/:id/resend', async (req, res) => {
+    const { id } = req.params;
+    const emailHeader = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(emailHeader)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    try {
+      let order: any;
+      if (firestore) {
+        const doc = await firestore.collection('orders').doc(id).get();
+        if (doc.exists) {
+          order = { id: doc.id, ...doc.data() };
+        }
+      }
+
+      if (!order) {
+        const row = sqliteDb.prepare('SELECT * FROM orders WHERE id = ?').get(id) as any;
+        if (row) {
+          const items = sqliteDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(id);
+          order = { ...row, items };
+        }
+      }
+
+      if (!order) return res.status(404).json({ error: 'ORDER_NOT_FOUND' });
+
+      const resend = getResendClient();
+      const orderItems = order.items || [];
+      const targetEmail = order.email || order.user_email;
+
+      const { data, error } = await resend.emails.send({
+        from: 'P-THREAD <onboarding@resend.dev>',
+        to: [targetEmail],
+        subject: 'ARCHIVE_RESYNC // Manifest Re-Dispatch',
+        html: `
+          <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
+            <p style="color: #e61e1e; font-size: 10px; margin-bottom: 20px;">[RE-DISPATCH_PROTOCOL_ACTIVE]</p>
+            <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // ACQUISITION_RECEIPT</h1>
+            <p style="font-size: 12px; color: #888;">Manifest_ID: ${order.id}</p>
+            
+            <div style="margin: 40px 0;">
+              <h2 style="font-size: 16px; color: #fff; text-transform: uppercase;">Secured Items:</h2>
+              <ul style="list-style: none; padding: 0;">
+                ${orderItems.map((item: any) => `
+                  <li style="margin-bottom: 15px; border-left: 2px solid #333; padding-left: 15px;">
+                    <strong style="display: block;">${item.name || item.product_name}</strong>
+                    <span style="font-size: 12px; color: #888;">${item.color} / ${item.size} // QTY: ${item.quantity}</span>
+                    <span style="display: block; color: #e61e1e;">₹${item.price}.00</span>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+
+            <div style="border-top: 1px solid #333; padding-top: 20px;">
+              <div style="display: flex; gap: 20px; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: #888;">SHIPPING_SURCHARGE:</span>
+                  <span style="color: #fff;">₹${order.shipping_amount || order.shippingAmount || 0}.00</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: #888;">ACQUISITION_TOTAL:</span>
+                  <strong style="color: #fff; font-size: 20px;">₹${order.total}.00</strong>
+                </div>
+              </div>
+            </div>
+
+            <p style="margin-top: 40px; font-size: 10px; color: #444; line-height: 1.6;">
+              LOGISTICS_NOTE: Manifest re-synchronized by operator. Current sector status: ${order.status}.
+            </p>
+          </div>
+        `,
+      });
+
+      if (error) return res.status(400).json({ error });
+      res.json({ success: true, data });
+    } catch (err) {
+      console.error('RESEND_FAILURE:', err);
+      res.status(500).json({ error: 'RESEND_PROTOCOL_ERROR' });
+    }
+  });
+
   app.patch('/api/admin/orders/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
@@ -639,7 +763,7 @@ async function startServer() {
         html: `
           <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
             <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // ACQUISITION_RECEIPT</h1>
-            <p style="font-size: 12px; color: #888;">Manifest_ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+            <p style="font-size: 12px; color: #888;">Manifest_ID: ${orderId}</p>
             
             <div style="margin: 40px 0;">
               <h2 style="font-size: 16px; color: #fff; text-transform: uppercase;">Secured Items:</h2>
@@ -679,7 +803,7 @@ async function startServer() {
         return res.status(400).json({ error });
       }
 
-      res.status(200).json({ success: true, data });
+      res.status(200).json({ success: true, orderId, data });
     } catch (err) {
       console.error('Server Internal Error:', err);
       res.status(500).json({ error: 'Internal server error' });
