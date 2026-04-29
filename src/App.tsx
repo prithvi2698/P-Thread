@@ -31,7 +31,7 @@ function AppContent() {
     return saved ? JSON.parse(saved) : [];
   });
   const [user, setUser] = useState<{ name: string; email: string; uid: string } | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(PRODUCTS as Product[]);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
@@ -42,35 +42,15 @@ function AppContent() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
-    // Fetch Products from Archival Database
-    fetch('/api/products')
-      .then(res => {
-        if (!res.ok) throw new Error('ARCHIVE_OFFLINE');
-        return res.json();
-      })
-      .then(data => setProducts(Array.isArray(data) ? data : []))
-      .catch(err => {
-        console.error("PRODUCT_TELEMETRY_FAILURE:", err);
-        setNotification("SYSTEM_ALERT // ARCHIVAL_SYNC_OFFLINE");
-      });
-  }, []);
-  useEffect(() => {
     // Firebase Identity Sync
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
+      if (firebaseUser && firebaseUser.emailVerified) {
         const userData = {
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ACQUIRER_01',
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Operator',
           email: firebaseUser.email || '',
           uid: firebaseUser.uid
         };
         setUser(userData);
-        
-        // Sync Identity to local SQL archive
-        fetch('/api/auth-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(userData)
-        });
       } else {
         setUser(null);
       }
@@ -80,29 +60,8 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Load remote cart if user is logged in
-    if (user) {
-      fetch(`/api/cart?uid=${user.uid}`)
-        .then(res => res.json())
-        .then(items => {
-          if (items && items.length > 0) {
-            setCart(items);
-          }
-        });
-    }
-  }, [user?.uid]);
-
-  useEffect(() => {
-    // Sync cart to remote if user is logged in
-    if (user) {
-      fetch('/api/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: user.uid, items: cart })
-      });
-    }
     localStorage.setItem('threads-cart', JSON.stringify(cart));
-  }, [cart, user?.uid]);
+  }, [cart]);
 
   useEffect(() => {
     localStorage.setItem('threads-wishlist', JSON.stringify(wishlist));

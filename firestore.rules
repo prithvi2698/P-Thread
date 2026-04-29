@@ -59,21 +59,47 @@ service cloud.firestore {
              data.createdAt == request.time;
     }
 
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'price', 'description', 'image', 'category', 'stock']) &&
+             data.name is string && data.name.size() <= 256 &&
+             data.price is number && data.price >= 0 &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.image is string && data.image.size() <= 1000 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.stock is number && data.stock >= 0;
+    }
+
+    function isValidCart(data) {
+      return data.keys().hasAll(['items', 'updatedAt']) &&
+             data.items is list && data.items.size() <= 50 &&
+             data.updatedAt == request.time;
+    }
+
     // --- MATCH BLOCKS ---
 
     // USERS COLLECTION
     match /users/{userId} {
-      allow get: if isSignedIn();
+      allow get: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+      allow update: if (isOwner(userId) && isValidUser(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])
-      ) || isAdmin();
+      )) || isAdmin();
+
+      // CART SUBCOLLECTION
+      match /cart/{cartId} {
+        allow read, write: if isOwner(userId) && isValidCart(incoming());
+      }
+    }
+
+    // PRODUCTS COLLECTION
+    match /products/{productId} {
+      allow list, get: if true;
+      allow create, update, delete: if isAdmin() && isValidProduct(incoming());
     }
 
     // REVIEWS COLLECTION
     match /reviews/{reviewId} {
-      allow list: if true; // Publicly readable reviews
-      allow get: if true;
+      allow list, get: if true;
       allow create: if isSignedIn() && isValidReview(incoming());
       allow update: if (isOwner(existing().userId) || isAdmin()) && isValidReview(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'comment'])

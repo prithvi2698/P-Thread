@@ -47,12 +47,48 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "total", "status", "items", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Store product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "images": { "type": "array" },
+        "sizes": { "type": "array" },
+        "colors": { "type": "array" },
+        "stock": { "type": "number" },
+        "isNew": { "type": "boolean" },
+        "isArchived": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "description", "image", "category", "stock"]
+    },
+    "Cart": {
+      "title": "Cart",
+      "description": "User shopping cart",
+      "type": "object",
+      "properties": {
+        "items": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["items", "updatedAt"]
     }
   },
   "firestore": {
     "users/{userId}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "users/{userId}/cart": {
+      "schema": "Cart",
+      "description": "User cart storage"
     },
     "reviews/{reviewId}": {
       "schema": "Review",
@@ -61,6 +97,10 @@
     "orders/{orderId}": {
       "schema": "Order",
       "description": "Customer orders"
+    },
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Store products"
     }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database } from 'lucide-react';
+import { PRODUCTS } from '../constants';
 
 interface OrderItem {
   name: string;
@@ -44,11 +45,8 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/orders', {
-        headers: { 'x-admin-email': adminEmail }
-      });
-      const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
+      // Temporarily disabled for Auth-only mode
+      setOrders([]);
     } catch (err) {
       console.error("Admin Order Fetch Failure:", err);
     } finally {
@@ -59,9 +57,7 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/products');
-      const data = await res.json();
-      setInventory(Array.isArray(data) ? data : []);
+      setInventory(PRODUCTS as any[]);
     } catch (err) {
       console.error("Admin Inventory Fetch Failure:", err);
       setInventory([]);
@@ -79,17 +75,8 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
 
   const updateStatus = async (orderId: string, newStatus: string) => {
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-email': adminEmail 
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-      if (res.ok) {
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-      }
+      // Temporarily disabled for Auth-only mode
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     } catch (err) {
       console.error("Status Update failure:", err);
     }
@@ -97,14 +84,7 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
 
   const updateStock = async (productId: string, newStock: number) => {
     try {
-      await fetch(`/api/admin/products/${productId}`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-email': adminEmail 
-        },
-        body: JSON.stringify({ stock: newStock })
-      });
+      // Temporarily disabled for Auth-only mode
       setInventory(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
     } catch (err) {
       console.error("Stock update failure:", err);

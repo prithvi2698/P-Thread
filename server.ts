@@ -68,6 +68,27 @@ async function startServer() {
     initializeSql();
     seedProducts(PRODUCTS);
     console.log('STARTING_SERVER_PHASE // DB_SYNC_COMPLETE');
+
+    // SEED FIRESTORE PRODUCTS
+    if (firestore) {
+      const productsSnapshot = await firestore.collection('products').limit(1).get();
+      if (productsSnapshot.empty) {
+        console.log('RECREATING_BACKEND // SEEDING_FIRESTORE_PRODUCTS');
+        const batch = firestore.batch();
+        PRODUCTS.forEach((product: any) => {
+          const docRef = firestore.collection('products').doc(product.id);
+          batch.set(docRef, {
+            ...product,
+            price: Number(product.price),
+            originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
+            isArchived: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        await batch.commit();
+        console.log('RECREATING_BACKEND // FIRESTORE_SEED_COMPLETE');
+      }
+    }
   } catch (dbErr) {
     console.error('DATABASE_INITIALIZATION_CRITICAL_FAILURE:', dbErr);
   }
@@ -354,6 +375,21 @@ async function startServer() {
           itemStmt.run(orderId, item.name, item.color, item.size, item.quantity, item.price);
         }
       })();
+
+      // FIRESTORE SYNC
+      if (firestore) {
+        await firestore.collection('orders').doc(orderId).set({
+          userId: userId || null,
+          email,
+          total,
+          shippingAmount: shipping,
+          paymentId: paymentId || null,
+          items: orderDetails,
+          status: 'PENDING_DISPATCH',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
 
       const resend = getResendClient();
       const { data, error } = await resend.emails.send({

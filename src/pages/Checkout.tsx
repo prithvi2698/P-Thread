@@ -4,30 +4,7 @@ import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error('Firestore Error: ', error);
-  throw new Error(JSON.stringify({
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-    },
-    operationType,
-    path
-  }));
-}
+import { auth } from '../lib/firebase';
 
 interface CheckoutProps {
   cart: CartItem[];
@@ -258,37 +235,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 throw new Error('PAYMENT_VERIFICATION_FAILURE');
               }
 
-              // BACKEND SYNC: Save order to Firestore
-              try {
-                await addDoc(collection(db, 'orders'), {
-                  userId: user?.uid || null,
-                  email: formData.email,
-                  total,
-                  shippingAmount: shipping,
-                  paymentId: response.razorpay_payment_id,
-                  status: 'PENDING_DISPATCH',
-                  shippingDetails: {
-                    address: formData.address,
-                    city: formData.city,
-                    postalCode: formData.postalCode,
-                    country: formData.country,
-                    region: shippingRegion
-                  },
-                  items: cart.map((item: any) => ({
-                    id: item.id,
-                    name: item.name,
-                    color: item.selectedColor,
-                    size: item.selectedSize,
-                    quantity: item.quantity,
-                    price: item.price
-                  })),
-                  createdAt: serverTimestamp()
-                });
-              } catch (error) {
-                handleFirestoreError(error, OperationType.WRITE, 'orders');
-              }
-
-              // BACKEND SYNC: Send Email Receipt via API (Includes SQL Sync)
+              // BACKEND SYNC: Send Email Receipt via API (Includes SQL and FIRESTORE Sync)
               await fetch('/api/send-receipt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

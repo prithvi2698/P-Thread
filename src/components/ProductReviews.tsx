@@ -1,33 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, MessageSquare, Send, Trash2, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, QuerySnapshot, DocumentData } from 'firebase/firestore';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: any;
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error('Firestore Error: ', error);
-  throw new Error(JSON.stringify({
-    error: error instanceof Error ? error.message : String(error),
-    operationType,
-    path
-  }));
-}
 
 interface Review {
   id: string;
@@ -53,24 +26,8 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
   const [hoveredRating, setHoveredRating] = useState<number | null>(null);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'reviews'),
-      where('productId', '==', productId),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-      const reviewData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate()?.toISOString() || new Date().toISOString()
-      })) as Review[];
-      setReviews(reviewData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'reviews');
-    });
-
-    return () => unsubscribe();
+    // Firestore reviews temporarily disabled in Auth-only mode
+    setReviews([]);
   }, [productId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,32 +39,12 @@ export default function ProductReviews({ productId, user, onLoginPrompt }: Produ
 
     if (!comment.trim()) return;
 
-    setIsSubmitting(true);
-    try {
-      await addDoc(collection(db, 'reviews'), {
-        productId,
-        userId: user.uid,
-        userName: user.name,
-        rating,
-        comment,
-        createdAt: serverTimestamp()
-      });
-      
-      setComment('');
-      setRating(5);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'reviews');
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Disabled in Auth-only mode
+    setComment('');
   };
 
   const handleDelete = async (reviewId: string) => {
-    try {
-      await deleteDoc(doc(db, 'reviews', reviewId));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `reviews/${reviewId}`);
-    }
+    // Disabled in Auth-only mode
   };
 
   const averageRating = reviews.length > 0 
