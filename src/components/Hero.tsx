@@ -75,9 +75,9 @@ export default function Hero() {
             opacity: [0.1, 0.3, 0.1]
           }}
           transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute bottom-1/4 left-[5%] text-[8px] font-mono font-black tracking-[0.5em] text-white/20"
+          className="absolute bottom-14 left-[5%] text-[8px] font-mono font-black tracking-[0.5em] text-white/20"
         >
-          SYSTEM_SYNC: 04.17.2026 // PACKET_LOSS: 0.00%
+          SYSTEM_SYNC_ACTIVE
         </motion.div>
 
         {/* Large Decorative X - Removed background P_THREAD to avoid conflict with centered P */}
@@ -101,7 +101,6 @@ export default function Hero() {
           className="flex flex-col items-center"
         >
           <div className="mb-12 flex flex-col items-center gap-4">
-             <span className="text-[10px] font-black tracking-[0.8em] text-accent uppercase">Archive // Studio_Operations</span>
              <div className="h-[2px] w-24 bg-accent/30" />
           </div>
 

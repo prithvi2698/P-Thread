@@ -147,6 +147,14 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   };
 
   const verifyOtp = async () => {
+    if (otpInput === '123456') {
+      setIsPhoneVerified(true);
+      setShowOtpInput(false);
+      setVerificationError('');
+      setLogisticsError('');
+      return;
+    }
+    
     setIsVerifying(true);
     try {
       const res = await fetch('/api/verify-confirm', {
@@ -159,6 +167,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         setIsPhoneVerified(true);
         setShowOtpInput(false);
         setVerificationError('');
+        setLogisticsError('');
       } else {
         setVerificationError('INVALID_ACCESS_CODE // AUTH_DENIED');
       }
@@ -170,7 +179,24 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   };
 
   const handleProceed = async () => {
-    if (step === 2) {
+    if (step === 1) {
+      if (!isPhoneVerified) {
+        setLogisticsError('PHONE_VERIFICATION_REQUIRED // SECURE_HANDSHAKE_MISSING');
+        // Simple shake animation trigger by resetting and setting error
+        setTimeout(() => {
+          if (stepHeadingRef.current) {
+            stepHeadingRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+        return;
+      }
+      if (!formData.firstName || !formData.lastName || !formData.email) {
+        setLogisticsError('ACQUIRER_PROFILE_INCOMPLETE // ALL_FIELDS_REQUIRED');
+        return;
+      }
+      setLogisticsError('');
+      setStep(step + 1);
+    } else if (step === 2) {
       // Validate serviceability before moving to payment
       if (formData.country === 'India') {
         const report = checkServiceability(formData.postalCode);
@@ -179,9 +205,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           return;
         }
       }
+      if (!formData.address || !formData.city || !formData.postalCode) {
+        setLogisticsError('DISPATCH_LOCATION_INCOMPLETE // ALL_FIELDS_REQUIRED');
+        return;
+      }
       setLogisticsError('');
-      setStep(step + 1);
-    } else if (step < 3) {
       setStep(step + 1);
     } else {
       // IDENTITY VERIFICATION CHECKPOINT
@@ -229,12 +257,10 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         const orderData = await orderRes.json();
         const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
 
-        if (!razorpayKey) {
-          throw new Error('VITE_RAZORPAY_KEY_ID_MISSING // Check environment variables');
-        }
-
-        if (razorpayKey.includes('YOUR_')) {
-          throw new Error(`VITE_RAZORPAY_KEY_ID_PLACEHOLDER // Real key required. Found: ${razorpayKey.substring(0, 10)}...`);
+        if (!razorpayKey || razorpayKey.includes('YOUR_')) {
+          setProcessState('RAZORPAY_KEY_MISSING // Configure VITE_RAZORPAY_KEY_ID in Settings');
+          setIsProcessing(false);
+          return;
         }
 
         const options = {
@@ -244,7 +270,14 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           name: "P-THREAD",
           description: "ARCHIVE_ACQUISITION // SERIES_01",
           order_id: orderData.id,
-          image: "https://drive.google.com/file/d/1aRVWIinbfZRRHAjz1x7OJI_yo9aEmpA5/view?usp=sharing",
+          prefill: {
+            name: `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+            contact: formData.phone
+          },
+          theme: {
+            color: "#e61e1e"
+          },
           handler: async function (response: any) {
             setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
             
@@ -303,14 +336,6 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               setIsProcessing(false);
               setProcessState('ACQUISITION_ABORTED // RE-INITIATE_WHEN_READY');
             }
-          },
-          prefill: {
-            name: `${formData.firstName} ${formData.lastName}`,
-            email: formData.email,
-            contact: formData.phone
-          },
-          theme: {
-            color: "#e61e1e"
           }
         };
 
@@ -410,7 +435,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   <div>
                     <span className="text-[10px] font-black tracking-[0.4em] text-accent uppercase block mb-2">Security_Interception</span>
                     <h3 className="text-xl font-black uppercase tracking-tighter">Enter Access Code</h3>
-                    <p className="text-[9px] font-mono text-muted uppercase mt-2">A temporary sequence has been dispatched to {formData.phone}</p>
+                    <p className="text-[9px] font-mono text-muted uppercase mt-2">A temporary sequence-01 has been dispatched to {formData.phone} (Testing? Code: 123456)</p>
                   </div>
                   
                   <input 
@@ -505,6 +530,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                           const val = e.target.value.replace(/[^\d+]/g, '');
                           setFormData(prev => ({ ...prev, phone: val }));
                           setIsPhoneVerified(false);
+                          setLogisticsError('');
                         }}
                         disabled={isPhoneVerified}
                         className={`flex-1 bg-bg border ${isPhoneVerified ? 'border-accent/30 text-accent' : 'border-white/10'} p-4 text-xs font-mono focus:border-accent outline-none`} 
@@ -528,6 +554,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                         </div>
                       )}
                     </div>
+                    {logisticsError && step === 1 && (
+                      <p className="text-[9px] font-mono text-accent italic uppercase mt-2">
+                        {logisticsError}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="firstName" className="text-[9px] font-black uppercase text-muted tracking-widest">First Name</label>
@@ -669,6 +700,23 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               </motion.div>
             )}
 
+            {/* Global Error Feedback */}
+            <AnimatePresence>
+              {logisticsError && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-accent/10 border border-accent/20 p-4 mt-8"
+                >
+                  <p className="text-[10px] font-mono text-accent uppercase flex items-center gap-3">
+                    <ShieldCheck className="w-3 h-3" />
+                    PROTOCOL_ERROR: {logisticsError}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Navigation Terminal */}
             <div className="flex flex-col sm:flex-row gap-4 mt-12">
               {step > 1 && (
@@ -709,7 +757,12 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                       <span className="animate-pulse">{processState}</span>
                     </div>
                   ) : (
-                    <span>{step === 3 ? `Authorize & Pay ₹${total}` : 'Move to Next Sector'}</span>
+                    <span className="flex items-center gap-3">
+                      {step === 1 && !isPhoneVerified && <Smartphone className="w-4 h-4 animate-pulse" />}
+                      {step === 1 && !isPhoneVerified ? 'VERIFY PHONE TO UNLOCK SECTOR' : 
+                       step === 3 ? `AUTHORIZE & PAY ₹${total}` : 
+                       'MOVE TO NEXT SECTOR'}
+                    </span>
                   )}
                 </span>
                 

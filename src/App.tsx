@@ -285,23 +285,21 @@ function AppContent() {
             <main className="flex flex-col gap-24 md:gap-32">
               <Hero />
               <ProductList 
-                products={products.filter(p => !p.name.startsWith('BTS //'))} 
+                products={products.filter(p => !['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
                 onViewDetails={setSelectedProduct}
-                title="BTS // Global Archive"
-                collectionSubtitle="Archival_Sync_Active"
+                title="Global Archive"
                 id="series-01"
               />
               <ProductList 
-                products={products.filter(p => p.name.startsWith('BTS //'))} 
+                products={products.filter(p => ['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
                 onAddToCart={addToCart}
                 onWishlistToggle={toggleWishlist}
                 wishlist={wishlist}
                 onViewDetails={setSelectedProduct}
-                title="BTS // Signature Series"
-                collectionSubtitle="Latest_Manifest_v02"
+                title="Signature Series"
                 id="bts-archive"
                 accentColor="#8b5cf6"
               />

@@ -29,7 +29,12 @@ function getRazorpay(): Razorpay {
     }
     const isLive = key.startsWith('rzp_live_');
     const isTest = key.startsWith('rzp_test_');
-    console.log(`RAZORPAY_INIT // ID: ${key.substring(0, 10)}... // SECRET_PREFIX: ${secret.substring(0, 4)}... // MODE: ${isLive ? 'LIVE' : isTest ? 'TEST' : 'UNKNOWN'}`);
+    
+    if (!isLive && !isTest) {
+      console.error(`RAZORPAY_KEY_FORMAT_ERROR // Key ID must start with rzp_test_ or rzp_live_. Current prefix: ${key.substring(0, 9)}`);
+    }
+
+    console.log(`RAZORPAY_INIT // ID: ${key.substring(0, 12)}... // SECRET_MASKED // MODE: ${isLive ? 'LIVE' : isTest ? 'TEST' : 'UNKNOWN'}`);
     
     razorpayInstance = new Razorpay({
       key_id: key,
@@ -168,13 +173,17 @@ async function startServer() {
 
       // Firestore Cloud Sync
       if (firestore) {
-        await firestore.collection('users').doc(uid).set({
-          uid,
-          email,
-          displayName: finalName || null,
-          photoURL: photoURL || null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        try {
+          await firestore.collection('users').doc(uid).set({
+            uid,
+            email,
+            displayName: finalName || null,
+            photoURL: photoURL || null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (fErr) {
+          console.warn('FIRESTORE_AUTH_SYNC_FAILURE // SILENT_ABORT:', fErr);
+        }
       }
 
       res.json({ success: true });
@@ -190,21 +199,37 @@ async function startServer() {
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
     
     try {
-      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
-      const snapshot = await firestore.collection('orders')
-        .where('userId', '==', uid)
-        .orderBy('createdAt', 'desc')
-        .get();
+      if (firestore) {
+        try {
+          const snapshot = await firestore.collection('orders')
+            .where('userId', '==', uid)
+            .orderBy('createdAt', 'desc')
+            .get();
+          
+          const orders = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
+          }));
+          
+          return res.json(Array.isArray(orders) ? orders : []);
+        } catch (fErr) {
+          console.warn('FIRESTORE_ORDERS_RETR_FAILURE // FALLING_BACK_TO_SQL');
+        }
+      }
       
-      const orders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
-      }));
-      
-      res.json(Array.isArray(orders) ? orders : []);
+      const orders = sqliteDb.prepare('SELECT * FROM orders WHERE uid = ? ORDER BY created_at DESC').all(uid);
+      const ordersWithItems = orders.map((order: any) => {
+        const items = sqliteDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+        return {
+          ...order,
+          items,
+          created_at: order.created_at
+        };
+      });
+      res.json(ordersWithItems);
     } catch (err) {
-      console.error('FIREBASE_ORDER_FETCH_FAILURE:', err);
+      console.error('ORDER_FETCH_FAILURE:', err);
       res.status(500).json([]);
     }
   });
@@ -243,15 +268,32 @@ async function startServer() {
   app.get('/api/reviews/:productId', async (req, res) => {
     const { productId } = req.params;
     try {
-      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
-      const snapshot = await firestore.collection('reviews')
-        .where('productId', '==', productId)
-        .orderBy('createdAt', 'desc')
-        .get();
-      const reviews = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        createdAt: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
+      if (firestore) {
+        try {
+          const snapshot = await firestore.collection('reviews')
+            .where('productId', '==', productId)
+            .orderBy('createdAt', 'desc')
+            .get();
+          const reviews = snapshot.docs.map(doc => ({ 
+            id: doc.id, 
+            ...doc.data(),
+            createdAt: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
+          }));
+          return res.json(reviews);
+        } catch (fErr) {
+          console.warn('FIRESTORE_REVIEWS_RETR_FAILURE // FALLING_BACK_TO_SQL');
+        }
+      }
+
+      const rows = sqliteDb.prepare('SELECT * FROM reviews WHERE product_id = ? ORDER BY created_at DESC').all(productId);
+      const reviews = rows.map((r: any) => ({
+        id: String(r.id),
+        productId: r.product_id,
+        userId: r.user_id,
+        userName: r.user_name,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.created_at
       }));
       res.json(reviews);
     } catch (err) {
@@ -265,16 +307,27 @@ async function startServer() {
     if (!userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
 
     try {
-      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
-      const docRef = await firestore.collection('reviews').add({
-        productId,
-        rating,
-        comment,
-        userName,
-        userId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      res.json({ id: docRef.id });
+      let firestoreId = null;
+      if (firestore) {
+        try {
+          const docRef = await firestore.collection('reviews').add({
+            productId,
+            rating,
+            comment,
+            userName,
+            userId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          firestoreId = docRef.id;
+        } catch (fErr) {
+          console.error('FIRESTORE_REVIEW_SUBMISSION_FAILURE:', fErr);
+        }
+      }
+
+      const stmt = sqliteDb.prepare('INSERT INTO reviews (product_id, user_id, user_name, rating, comment) VALUES (?, ?, ?, ?, ?)');
+      const info = stmt.run(productId, userId, userName || 'Anonymous', rating, comment);
+      
+      res.json({ id: firestoreId || String(info.lastInsertRowid) });
     } catch (err) {
       console.error('REVIEW_SUBMISSION_FAILURE:', err);
       res.status(500).json({ error: 'REVIEW_SUBMISSION_FAILURE' });
@@ -290,10 +343,14 @@ async function startServer() {
         .run(uid, JSON.stringify(items));
 
       if (firestore) {
-        await firestore.collection('users').doc(uid).collection('cart').doc('default').set({
-          items,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        try {
+          await firestore.collection('users').doc(uid).collection('cart').doc('default').set({
+            items,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } catch (fErr) {
+          console.warn('FIRESTORE_CART_SYNC_FAILURE // SILENT_ABORT:', fErr);
+        }
       }
 
       res.json({ success: true });
@@ -311,21 +368,38 @@ async function startServer() {
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
-      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
-      const snapshot = await firestore.collection('orders')
-        .orderBy('createdAt', 'desc')
-        .get();
+      if (firestore) {
+        try {
+          const snapshot = await firestore.collection('orders')
+            .orderBy('createdAt', 'desc')
+            .get();
+          
+          const orders = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            user_email: doc.data().email,
+            created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
+          }));
+          
+          return res.json(Array.isArray(orders) ? orders : []);
+        } catch (fErr) {
+          console.warn('FIRESTORE_ADMIN_ORDERS_RETR_FAILURE // FALLING_BACK_TO_SQL');
+        }
+      }
       
-      const orders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        user_email: doc.data().email,
-        created_at: (doc.data().createdAt as admin.firestore.Timestamp)?.toDate()?.toISOString()
-      }));
-      
-      res.json(Array.isArray(orders) ? orders : []);
+      const orders = sqliteDb.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
+      const ordersWithItems = orders.map((order: any) => {
+        const items = sqliteDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+        return {
+          ...order,
+          items,
+          user_email: order.email,
+          created_at: order.created_at
+        };
+      });
+      res.json(ordersWithItems);
     } catch (err) {
-      console.error('ADMIN_FIREBASE_ORDER_FETCH_FAILURE:', err);
+      console.error('ADMIN_ORDER_FETCH_FAILURE:', err);
       res.status(500).json([]);
     }
   });
@@ -337,13 +411,25 @@ async function startServer() {
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
-      if (!firestore) throw new Error('FIRESTORE_NOT_INITIALIZED');
-      await firestore.collection('orders').doc(id).update({
-        status,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      res.json({ success: true });
+      let firestoreUpdated = false;
+      if (firestore) {
+        try {
+          await firestore.collection('orders').doc(id).update({
+            status,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          firestoreUpdated = true;
+        } catch (fErr) {
+          console.error('FIRESTORE_ORDER_UPDATE_FAILURE:', fErr);
+        }
+      }
+
+      // Always update SQL if it exists
+      sqliteDb.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+      
+      res.json({ success: true, firestoreUpdated });
     } catch (err) {
+      console.error('ORDER_UPDATE_FAILURE:', err);
       res.status(500).json({ error: 'ORDER_UPDATE_FAILURE' });
     }
   });
@@ -423,11 +509,22 @@ async function startServer() {
       res.json(order);
     } catch (err: any) {
       console.error('RAZORPAY_ORDER_FAILURE:', err);
-      // Return specific error if available from Razorpay
-      const errorMsg = err.error?.description || err.message || 'ORDER_CREATION_FAILURE';
+      
+      // Detailed error analysis
+      let errorMsg = 'ORDER_CREATION_FAILURE';
+      if (err.error) {
+        errorMsg = err.error.description || err.error.code || errorMsg;
+        if (err.error.description === 'Authentication failed') {
+          errorMsg = 'RAZORPAY_AUTH_FAILED // Check Key ID and Secret in Settings';
+        }
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+
       res.status(500).json({ 
         error: errorMsg,
-        details: err.error || null
+        details: err.error || null,
+        hint: 'Ensure VITE_RAZORPAY_KEY_ID matches RAZORPAY_KEY_ID and Secret is correct.'
       });
     }
   });
@@ -493,17 +590,21 @@ async function startServer() {
 
       // FIRESTORE SYNC
       if (firestore) {
-        await firestore.collection('orders').doc(orderId).set({
-          userId: userId || null,
-          email,
-          total,
-          shippingAmount: shipping,
-          paymentId: paymentId || null,
-          items: orderDetails,
-          status: 'PENDING_DISPATCH',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        try {
+          await firestore.collection('orders').doc(orderId).set({
+            userId: userId || null,
+            email,
+            total,
+            shippingAmount: shipping,
+            paymentId: paymentId || null,
+            items: orderDetails,
+            status: 'PENDING_DISPATCH',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } catch (fErr) {
+          console.error('FIRESTORE_ORDER_SYNC_FAILURE // CONTINUING_WITH_SQL_ONLY:', fErr);
+        }
       }
 
       const resend = getResendClient();
@@ -543,7 +644,7 @@ async function startServer() {
             </div>
 
             <p style="margin-top: 40px; font-size: 10px; color: #444; line-height: 1.6;">
-              LOGISTICS_NOTE: Your items are now moving through the studio distribution grid. Tracking manifests will be updated in your terminal as sectors are cleared.
+              LOGISTICS_NOTE: Your items are now moving through the distribution grid. Tracking manifests will be updated in your terminal as sectors are cleared.
             </p>
           </div>
         `,

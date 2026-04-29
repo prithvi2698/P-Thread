@@ -35,7 +35,7 @@ export default function About() {
           <div className="aspect-[21/9] bg-white/5 overflow-hidden border border-white/5 relative group">
             <img 
               src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?q=80&w=2000&auto=format&fit=crop" 
-              alt="Studio Hub" 
+              alt="Operations Hub" 
               className="w-full h-full object-cover grayscale opacity-40 group-hover:opacity-60 transition-all duration-1000 scale-105 group-hover:scale-100"
               referrerPolicy="no-referrer"
             />

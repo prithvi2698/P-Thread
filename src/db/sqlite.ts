@@ -78,6 +78,20 @@ export function initializeSql() {
     )
   `);
 
+  console.log('INITIALIZING_SQL_ARCHIVE // Sector: Reviews');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      rating INTEGER NOT NULL,
+      comment TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    )
+  `);
+
   // Migration: Add original_price if missing
   const tableInfo = db.prepare("PRAGMA table_info(products)").all() as any[];
   const hasOriginalPrice = tableInfo.some(col => col.name === 'original_price');

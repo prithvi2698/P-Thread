@@ -36,7 +36,7 @@ export default function ProductCard({
       viewport={{ once: true }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`group relative bg-[#0a0a0a] p-1 flex flex-col justify-between overflow-hidden framed ${
+      className={`group relative bg-[#0a0a0a] flex flex-col justify-between overflow-hidden ${
         isPoster ? 'min-h-[600px] md:min-h-[800px]' : 'min-h-[400px] md:min-h-[450px]'
       }`}
     >
@@ -120,15 +120,7 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* Marquee overlay */}
-        <div className="absolute bottom-0 left-0 w-full overflow-hidden text-white py-1 whitespace-nowrap text-[8px] font-black uppercase tracking-[0.2em] transform translate-y-full group-hover:translate-y-0 transition-transform" style={{ backgroundColor: accentColor }}>
-          <div className="animate-marquee inline-block">
-            LIMITED DROP • ARCHIVE SERIES • EST. 2026 •&nbsp;
-          </div>
-          <div className="animate-marquee inline-block" aria-hidden="true">
-            LIMITED DROP • ARCHIVE SERIES • EST. 2026 •&nbsp;
-          </div>
-        </div>
+        {/* Marquee removed */}
       </div>
 
       <div className="p-4 flex justify-between items-end border-t border-white/5">
