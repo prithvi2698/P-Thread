@@ -199,11 +199,24 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           body: JSON.stringify({ amount: total })
         });
         
+        const contentType = orderRes.headers.get("content-type");
         if (!orderRes.ok) {
-          const errorData = await orderRes.json();
-          throw new Error(errorData.error || 'ORDER_PROTOCOL_FAILURE');
+          let errorMsg = 'ORDER_PROTOCOL_FAILURE';
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await orderRes.json();
+            errorMsg = errorData.error || errorMsg;
+          } else {
+            const text = await orderRes.text();
+            console.error("Non-JSON Error Response:", text);
+            errorMsg = `SERVER_ERROR (${orderRes.status}): ${text.substring(0, 50)}...`;
+          }
+          throw new Error(errorMsg);
         }
         
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error('INTERNAL_PROTOCOL_ERROR // Unexpected Response Format');
+        }
+
         const orderData = await orderRes.json();
         const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
 
@@ -247,9 +260,17 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 })
               });
               
+              const verifyContentType = verifyRes.headers.get("content-type");
               if (!verifyRes.ok) {
-                const errorData = await verifyRes.json();
-                throw new Error(errorData.error || 'PAYMENT_VERIFICATION_FAILURE');
+                let errorMsg = 'PAYMENT_VERIFICATION_FAILURE';
+                if (verifyContentType && verifyContentType.includes("application/json")) {
+                  const errorData = await verifyRes.json();
+                  errorMsg = errorData.error || errorMsg;
+                } else {
+                  const text = await verifyRes.text();
+                  errorMsg = `VERIFY_ERROR (${verifyRes.status}): ${text.substring(0, 50)}...`;
+                }
+                throw new Error(errorMsg);
               }
 
               // BACKEND SYNC: Send Email Receipt via API (Includes SQL and FIRESTORE Sync)
@@ -276,6 +297,19 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   }))
                 })
               });
+              
+              const receiptContentType = receiptRes.headers.get("content-type");
+              if (!receiptRes.ok) {
+                let errorMsg = 'RECEIPT_DISPATCH_FAILURE';
+                if (receiptContentType && receiptContentType.includes("application/json")) {
+                  const errorData = await receiptRes.json();
+                  errorMsg = errorData.error || errorMsg;
+                } else {
+                  const text = await receiptRes.text();
+                  errorMsg = `RECEIPT_ERROR (${receiptRes.status}): ${text.substring(0, 50)}...`;
+                }
+                throw new Error(errorMsg);
+              }
               
               const receiptData = await receiptRes.json();
               if (receiptData.orderId) {

@@ -26,12 +26,12 @@ interface AdminDashboardProps {
   adminEmail: string;
 }
 
-const STATUS_CONFIG: Record<string, { color: string, icon: any }> = {
-  'PENDING': { color: 'text-yellow-500', icon: Clock },
-  'PENDING_DISPATCH': { color: 'text-blue-400', icon: Database },
-  'SHIPPED': { color: 'text-accent', icon: Truck },
-  'DELIVERED': { color: 'text-green-500', icon: CheckCircle },
-  'CANCELLED': { color: 'text-muted', icon: AlertCircle },
+const STATUS_CONFIG: Record<string, { color: string, bg: string, icon: any }> = {
+  'PENDING': { color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/20', icon: Clock },
+  'PENDING_DISPATCH': { color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20', icon: Database },
+  'SHIPPED': { color: 'text-accent', bg: 'bg-accent/10 border-accent/20', icon: Truck },
+  'DELIVERED': { color: 'text-green-500', bg: 'bg-green-500/10 border-green-500/20', icon: CheckCircle },
+  'CANCELLED': { color: 'text-muted', bg: 'bg-white/5 border-white/10', icon: AlertCircle },
 };
 
 export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDashboardProps) {
@@ -162,6 +162,11 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
     return matchesSearch && matchesStatus;
   });
 
+  const filteredInventory = inventory.filter(p => 
+    p.name.toLowerCase().includes(filter.toLowerCase()) || 
+    p.category?.toLowerCase().includes(filter.toLowerCase())
+  );
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -182,78 +187,91 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="p-8 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-bg/50">
+            <div className="p-8 border-b border-white/5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-bg/50">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-accent flex items-center justify-center shadow-[0_0_30px_rgba(230,30,30,0.3)]">
                   <ShieldCheck className="text-white w-6 h-6" />
                 </div>
                 <div>
                   <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase block mb-1">
-                    Control_Center // v1.0
+                    Control_Center // v1.1
                   </span>
                   <h2 className="text-2xl font-black uppercase tracking-tighter">Operations</h2>
                 </div>
               </div>
               
-              <div className="flex gap-2 bg-bg p-1 border border-white/5">
+              <div className="flex w-full lg:w-auto gap-1 bg-bg p-1 border border-white/5">
                 <button 
                   onClick={() => setActiveTab('ORDERS')}
-                  className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'ORDERS' ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}
+                  className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+                    activeTab === 'ORDERS' 
+                      ? 'bg-accent text-white shadow-[0_0_15px_rgba(230,30,30,0.2)]' 
+                      : 'text-muted hover:text-white hover:bg-white/5'
+                  }`}
                 >
+                  <Package className="w-3.5 h-3.5" />
                   Manifests
                 </button>
                 <button 
                   onClick={() => setActiveTab('INVENTORY')}
-                  className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'INVENTORY' ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}
+                  className={`flex-1 lg:flex-none flex items-center justify-center gap-3 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+                    activeTab === 'INVENTORY' 
+                      ? 'bg-accent text-white shadow-[0_0_15px_rgba(230,30,30,0.2)]' 
+                      : 'text-muted hover:text-white hover:bg-white/5'
+                  }`}
                 >
+                  <Database className="w-3.5 h-3.5" />
                   Inventory
                 </button>
               </div>
 
               <button 
                 onClick={onClose}
-                className="p-3 bg-white/5 hover:bg-accent transition-colors"
+                className="absolute top-8 right-8 p-3 bg-white/5 hover:bg-accent transition-colors lg:relative lg:top-0 lg:right-0"
                 aria-label="Close Admin Panel"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            {/* Filters Bar (Only for Orders) */}
-            {activeTab === 'ORDERS' && (
-              <div className="p-6 bg-surface/50 border-b border-white/5 flex flex-col md:flex-row gap-6">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-                  <input 
-                    type="text" 
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    placeholder="SEARCH_MANIFEST_ID // EMAIL..."
-                    className="w-full bg-bg border border-white/10 pl-12 pr-4 py-3 text-[10px] font-mono focus:border-accent outline-none uppercase"
-                  />
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="relative">
+            {/* Global Search & Contextual Filters */}
+            <div className="p-6 bg-surface/50 border-b border-white/5 flex flex-col md:flex-row gap-6">
+              <div className="flex-1 relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+                <input 
+                  type="text" 
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder={activeTab === 'ORDERS' ? "SEARCH_MANIFEST_ID // EMAIL..." : "SEARCH_PRODUCT_CATALOG..."}
+                  className="w-full bg-bg border border-white/10 pl-12 pr-4 py-3 text-[10px] font-mono focus:border-accent outline-none uppercase"
+                />
+              </div>
+              
+              <div className="flex gap-4">
+                {activeTab === 'ORDERS' ? (
+                  <div className="relative flex-1 md:flex-none">
                     <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                     <select 
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="bg-bg border border-white/10 pl-12 pr-10 py-3 text-[10px] font-mono text-ink appearance-none cursor-pointer focus:border-accent outline-none uppercase"
+                      className="w-full bg-bg border border-white/10 pl-12 pr-10 py-3 text-[10px] font-mono text-ink appearance-none cursor-pointer focus:border-accent outline-none uppercase"
                     >
                       <option value="ALL">ALL STATUSES</option>
-                      <option value="PENDING">PENDING</option>
-                      <option value="PENDING_DISPATCH">PENDING_DISPATCH</option>
-                      <option value="SHIPPED">SHIPPED</option>
-                      <option value="DELIVERED">DELIVERED</option>
-                      <option value="CANCELLED">CANCELLED</option>
+                      {Object.keys(STATUS_CONFIG).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
                     </select>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-3 px-4 bg-bg border border-white/10">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-[9px] font-mono text-muted uppercase tracking-widest">Live_Stock_Feed</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
-            {/* Main Content */}
+            {/* Main Scrollable View */}
             <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
               {loading ? (
                 <div className="h-full flex items-center justify-center">
@@ -261,16 +279,16 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                     <motion.div 
                       animate={{ rotate: 360 }} 
                       transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                      className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full" 
+                      className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full shadow-[0_0_20px_rgba(230,30,30,0.2)]" 
                     />
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.4em]">Deciphering_Payload...</span>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.4em] animate-pulse">Syncing_Mainframe...</span>
                   </div>
                 </div>
               ) : activeTab === 'ORDERS' ? (
-                // ORDERS TAB (Previous Logic)
+                /* ORDERS CONTENT */
                 filteredOrders.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30 italic">
-                    <Package className="w-16 h-16 mb-4 stroke-1" />
+                  <div className="h-full flex flex-col items-center justify-center opacity-30">
+                    <Package className="w-16 h-16 mb-4 stroke-1 text-muted" />
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted">No manifestations detected in this sector.</p>
                   </div>
                 ) : (
@@ -281,12 +299,13 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                         <motion.div 
                           key={order.id}
                           initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="group bg-bg/50 border border-white/5 hover:border-accent/30 transition-all p-6 relative overflow-hidden"
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true }}
+                          className="group bg-bg/30 border border-white/5 hover:border-accent/30 transition-all p-6 relative overflow-hidden"
                         >
-                          {/* Order Card Content... */}
-                          <div className="absolute top-0 left-0 w-1 h-full bg-accent opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute top-0 left-0 w-1 h-full bg-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                           <div className="flex flex-col xl:flex-row justify-between gap-8">
+                            {/* ... same order card content starts ... */}
                             <div className="space-y-4">
                               <div className="flex items-center gap-4">
                                 {editingOrderId === order.id ? (
@@ -314,7 +333,7 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                                     </button>
                                   </div>
                                 )}
-                                <div className={`flex items-center gap-2 text-[9px] font-black px-2 py-1 bg-surface border border-white/5 ${STATUS_CONFIG[order.status]?.color || 'text-muted'}`}>
+                                <div className={`flex items-center gap-2 text-[8px] font-black px-2 py-1 border transition-colors ${STATUS_CONFIG[order.status]?.bg || 'bg-surface border-white/5'} ${STATUS_CONFIG[order.status]?.color || 'text-muted'} rounded-sm`}>
                                   <StatusIcon className="w-3 h-3" />
                                   {order.status}
                                 </div>
@@ -393,16 +412,32 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
               ) : (
                 // INVENTORY TAB
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {inventory.map((item) => (
-                      <div key={item.id} className="bg-bg/50 border border-white/5 p-6 space-y-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-[8px] font-black text-accent uppercase tracking-[0.4em] mb-1 block">{item.category}</span>
-                            <h3 className="text-xs font-black uppercase tracking-tighter">{item.name}</h3>
+                  {filteredInventory.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center py-20 opacity-30">
+                      <Database className="w-16 h-16 mb-4 stroke-1 text-muted" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted">No catalog matches detected.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredInventory.map((item) => (
+                        <motion.div 
+                          key={item.id}
+                          initial={{ opacity: 0, scale: 0.98 }}
+                          whileInView={{ opacity: 1, scale: 1 }}
+                          viewport={{ once: true }}
+                          className="bg-bg/30 border border-white/5 p-6 space-y-4 hover:border-accent/40 transition-all group"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[8px] font-black text-accent uppercase tracking-[0.4em] mb-1 block">{item.category}</span>
+                              <h3 className="text-xs font-black uppercase tracking-tighter group-hover:text-accent transition-colors">{item.name}</h3>
+                            </div>
+                            <img 
+                              src={item.images?.[0] || item.image} 
+                              alt="" 
+                              className="w-12 h-12 grayscale brightness-50 group-hover:grayscale-0 group-hover:brightness-100 transition-all duration-500" 
+                            />
                           </div>
-                          <img src={item.images[0] || item.image} alt="" className="w-12 h-12 grayscale brightness-50" />
-                        </div>
                         
                         <div className="flex justify-between items-center py-4 border-y border-white/5">
                           <div className="space-y-1">
@@ -429,12 +464,13 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                           <span>PRICE // ₹{item.price}</span>
                           <span className="uppercase">{item.stock <= 5 ? 'Critical_Fill' : 'Optimal_Manifest'}</span>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+          </div>
             
             {/* Footer */}
             <div className="p-4 bg-bg flex justify-between items-center border-t border-white/5 text-[8px] font-mono text-muted uppercase tracking-widest">

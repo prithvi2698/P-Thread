@@ -126,7 +126,7 @@ async function startServer() {
   }
   
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000; // Hardcoded to 3000 as per environment constraints
 
   app.use(express.json());
 
@@ -633,9 +633,10 @@ async function startServer() {
 
   app.post('/api/create-order', async (req, res) => {
     const { amount } = req.body;
+    console.log(`CREATE_ORDER_INCOMING // Amount: ${amount}`);
     
     // Minimum 1 INR (100 paise)
-    if (!amount || amount < 1) {
+    if (amount === undefined || amount < 1) {
       return res.status(400).json({ error: 'INVALID_AMOUNT // Minimum amount is 1 INR' });
     }
 
@@ -646,7 +647,10 @@ async function startServer() {
         currency: 'INR',
         receipt: `receipt_${Date.now()}`
       };
+      
+      console.log('RAZORPAY_GATEWAY_INIT // Options:', JSON.stringify(options));
       const order = await razorpay.orders.create(options);
+      console.log('RAZORPAY_ORDER_SUCCESS // ID:', order.id);
       res.json(order);
     } catch (err: any) {
       console.error('RAZORPAY_ORDER_FAILURE:', err);
@@ -808,6 +812,20 @@ async function startServer() {
       console.error('Server Internal Error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
+  });
+
+  // Global Error Handler for API Routes
+  app.use('/api', (err: any, req: any, res: any, next: any) => {
+    console.error('API_GLOBAL_ERROR:', err);
+    res.status(500).json({ 
+      error: 'INTERNAL_SERVER_ERROR', 
+      message: err.message || 'An unexpected protocol error occurred.'
+    });
+  });
+
+  // API 404 Handler (to avoid falling through to HTML SPA fallback)
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'API_ENDPOINT_NOT_FOUND' });
   });
 
   // Vite middleware for development
