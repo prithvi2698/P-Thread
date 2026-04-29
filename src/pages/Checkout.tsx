@@ -192,6 +192,16 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       // Razorpay Integration
       setIsProcessing(true);
       try {
+        const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
+
+        // Diagnostic Check for Keys
+        if (!razorpayKey || razorpayKey.trim() === '' || razorpayKey.includes('YOUR_')) {
+          console.error("DIAGNOSTIC_FAILURE // RAZORPAY_KEY_MISSING");
+          setPaymentError('GATEWAY_CONFIG_MISSING // Please set VITE_RAZORPAY_KEY_ID in the environment settings to enable payments.');
+          setIsProcessing(false);
+          return;
+        }
+
         setProcessState('INITIATING_SECURE_GATEWAY');
         const orderRes = await fetch('/api/create-order', {
           method: 'POST',
@@ -218,13 +228,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         }
 
         const orderData = await orderRes.json();
-        const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
-
-        if (!razorpayKey || razorpayKey.includes('YOUR_')) {
-          setPaymentError('RAZORPAY_KEY_MISSING // Configure VITE_RAZORPAY_KEY_ID in Settings');
-          setIsProcessing(false);
-          return;
-        }
+        // razorpayKey is already declared above
 
         const options = {
           key: razorpayKey,

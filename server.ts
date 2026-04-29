@@ -56,79 +56,113 @@ function getResendClient(): Resend {
 }
 
 async function startServer() {
-  try {
-    const projId = firebaseConfig.projectId;
-    const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
-    console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId} // DATABASE: ${dbId}`);
-    
-    if (!admin.apps.length) {
-      console.log(`INITIALIZING_FIREBASE_ADMIN // PROJECT: ${projId} // DATABASE: ${dbId}`);
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: projId
-      });
-    }
-    
-    firestore = getFirestore(admin.app(), dbId === '(default)' ? undefined : dbId);
-  } catch (firebaseErr) {
-    console.error('FIREBASE_ADMIN_INIT_FAILURE:', firebaseErr);
-  }
-
-  // Check Resend Status
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_INIT_WARNING // RESEND_API_KEY is missing. Email dispatch will fail.');
-  } else {
-    console.log('RESEND_INIT_SUCCESS // Key detected.');
-  }
-
-  try {
-    console.log('STARTING_SERVER_PHASE // DB_INIT');
-    initializeSql();
-    seedProducts(PRODUCTS);
-    console.log('STARTING_SERVER_PHASE // DB_SYNC_COMPLETE');
-
-    // SEED FIRESTORE PRODUCTS
-    if (firestore) {
-      console.log('CHECKING_FIRESTORE_CONNECTIVITY // ATTEMPTING_READ');
-      try {
-        const productsSnapshot = await firestore.collection('products').limit(1).get();
-        if (productsSnapshot.empty) {
-          console.log('RECREATING_BACKEND // SEEDING_FIRESTORE_PRODUCTS');
-          const batch = firestore.batch();
-          PRODUCTS.forEach((product: any) => {
-            const docRef = firestore.collection('products').doc(product.id);
-            batch.set(docRef, {
-              ...product,
-              price: Number(product.price),
-              originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
-              isArchived: false,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-          });
-          await batch.commit();
-          console.log('RECREATING_BACKEND // FIRESTORE_SEED_COMPLETE');
-        } else {
-          console.log('FIRESTORE_PRODUCTS_FOUND // SKIPPING_SEED');
-        }
-      } catch (firestoreReadErr: any) {
-        console.error('FIRESTORE_INIT_READ_FAILURE:', firestoreReadErr.message);
-        if (firestoreReadErr.code === 7 || firestoreReadErr.message?.includes('PERMISSION_DENIED')) {
-          console.error('DIAGNOSTIC: Permission Denied. This usually means the service account does not have "Cloud Datastore User" or "Firebase Admin" roles on the project, or the database ID is incorrect/unprovisioned.');
-          // We don't throw here to allow the server to at least start with SQLite
-          firestore = null; 
-        } else {
-          throw firestoreReadErr;
-        }
-      }
-    }
-  } catch (dbErr: any) {
-    console.error('DATABASE_INITIALIZATION_CRITICAL_FAILURE:', dbErr);
-  }
-  
   const app = express();
-  const PORT = 3000; // Hardcoded to 3000 as per environment constraints
+  const PORT = 3000;
 
   app.use(express.json());
+
+  // Global Context
+  const context: {
+    firestore: any;
+    resend: Resend | null;
+    razorpay: Razorpay | null;
+    isFirestoreEnabled: boolean;
+  } = {
+    firestore: null,
+    resend: null,
+    razorpay: null,
+    isFirestoreEnabled: true // Assume enabled until proven otherwise
+  };
+
+  // Improved Firebase Init
+  try {
+    console.log('INITIALIZING_RESOURCES_SYNC');
+    
+    // 1. SQLite Init (MUST be first and successful)
+    initializeSql();
+    seedProducts(PRODUCTS);
+    console.log('SQLITE_READY');
+  } catch (sqlErr) {
+    console.error('SQLITE_INIT_CRITICAL_FAILURE:', sqlErr);
+    // Continue but log, as better-sqlite3 might have already loaded
+  }
+
+  const initPromise = (async () => {
+    try {
+      console.log('INITIALIZING_CLOUD_RESOURCES_ASYNC');
+      
+      // Firebase Admin Init
+      const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
+      
+      if (!admin.apps.length) {
+        console.log(`PROVISIONING_FIREBASE_ADMIN // AUTO_DETECT // DB_ID: ${dbId}`);
+        admin.initializeApp();
+      }
+      
+      const app = admin.app();
+      console.log(`FIREBASE_APP_INITIALIZED // ACTIVE_PROJECT: ${app.options.projectId}`);
+      
+      // We try the configured database ID, but also log if it seems unconventional
+      context.firestore = getFirestore(app, (dbId === '(default)' || !dbId) ? undefined : dbId);
+      
+      // Critical Diagnostic Read
+      try {
+        console.log(`ATTEMPTING_DIAGNOSTIC_READ // DB: ${dbId}`);
+        const testRef = context.firestore.collection('products').limit(1);
+        await testRef.get();
+        console.log('DIAGNOSTIC_READ_SUCCESS');
+      } catch (diagErr: any) {
+        if (diagErr.message?.includes('Cloud Firestore API has not been used') || diagErr.message?.includes('disabled')) {
+          console.error('CRITICAL_CONFIG_ERROR: Cloud Firestore API is DISABLED in this project. Cross-device sync will be inactive.');
+          context.isFirestoreEnabled = false;
+          context.firestore = null;
+        } else if (diagErr.message?.includes('PERMISSION_DENIED') || diagErr.code === 7) {
+          console.error("CRITICAL_IAM_ERROR: Service Account lacks Cloud Datastore User role.");
+          context.isFirestoreEnabled = false;
+          context.firestore = null;
+        }
+      }
+
+      // Firestore Seeding
+      if (context.firestore) {
+        try {
+          const productsSnapshot = await context.firestore.collection('products').limit(1).get();
+          if (productsSnapshot.empty) {
+            console.log('SEEDING_FIRESTORE');
+            const batch = context.firestore.batch();
+            PRODUCTS.forEach((p: any) => {
+              batch.set(context.firestore.collection('products').doc(p.id), {
+                ...p,
+                price: Number(p.price),
+                originalPrice: p.originalPrice ? Number(p.originalPrice) : null,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            });
+            await batch.commit();
+            console.log('FIRESTORE_SEED_COMPLETE');
+          }
+        } catch (e: any) {
+          console.warn(`FIRESTORE_SEED_SKIPPED // ${e.message}`);
+        }
+      }
+    } catch (err) {
+      console.error('RESOURCE_INIT_ERROR:', err);
+    }
+  })();
+
+  // Middleware to ensure init is logged (does not block, just for tracking)
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      console.log(`API_REQUEST: ${req.method} ${req.url}`);
+    }
+    next();
+  });
+
+  // RESTORE THE SHARED REFS
+  // We'll update the global firestore variable once init is done
+  initPromise.then(() => {
+    firestore = context.firestore;
+  });
 
   app.get('/api/health', (req, res) => {
     const health = {
@@ -136,17 +170,18 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       services: {
         sqlite: !!sqliteDb,
-        firestore: !!firestore,
+        firestore: !!firestore && context.isFirestoreEnabled,
         razorpay: !!process.env.RAZORPAY_KEY_ID && !!process.env.RAZORPAY_KEY_SECRET,
         resend: !!process.env.RESEND_API_KEY
-      }
+      },
+      cloudSync: context.isFirestoreEnabled ? 'active' : 'disabled_by_policy_or_api'
     };
     res.json(health);
   });
 
   app.get('/api/firestore-health', async (req, res) => {
     try {
-      if (!firestore) return res.status(503).json({ status: 'error', message: 'FIRESTORE_NOT_INITIALIZED' });
+      if (!firestore || !context.isFirestoreEnabled) return res.status(503).json({ status: 'error', message: 'FIRESTORE_NOT_AVAILABLE_OR_DISABLED' });
       await firestore.collection('system').doc('health').set({
         lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
         status: 'Operational'
@@ -188,8 +223,8 @@ async function startServer() {
       const stmt = sqliteDb.prepare('INSERT OR REPLACE INTO users (uid, email, display_name) VALUES (?, ?, ?)');
       stmt.run(uid, email, finalName || null);
 
-      // Firestore Cloud Sync
-      if (firestore) {
+      // Firestore Cloud Sync (Only if enabled)
+      if (firestore && context.isFirestoreEnabled) {
         try {
           await firestore.collection('users').doc(uid).set({
             uid,
@@ -198,8 +233,11 @@ async function startServer() {
             photoURL: photoURL || null,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
-        } catch (fErr) {
-          console.warn('FIRESTORE_AUTH_SYNC_FAILURE // SILENT_ABORT:', fErr);
+        } catch (fErr: any) {
+          if (fErr.message?.includes('disabled') || fErr.code === 7) {
+            context.isFirestoreEnabled = false;
+          }
+          console.error(`FIRESTORE_AUTH_SYNC_FAILURE // UID: ${uid} // ERROR: ${fErr.message}`);
         }
       }
 
@@ -216,7 +254,7 @@ async function startServer() {
     if (!uid) return res.status(400).json({ error: 'UID_REQUIRED' });
     
     try {
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const snapshot = await firestore.collection('orders')
             .where('userId', '==', uid)
@@ -258,7 +296,7 @@ async function startServer() {
     
     try {
       let cloudItems = null;
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const cartDoc = await firestore.collection('users').doc(uid).collection('cart').doc('default').get();
           if (cartDoc.exists) {
@@ -285,7 +323,7 @@ async function startServer() {
   app.get('/api/reviews/:productId', async (req, res) => {
     const { productId } = req.params;
     try {
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const snapshot = await firestore.collection('reviews')
             .where('productId', '==', productId)
@@ -325,7 +363,7 @@ async function startServer() {
 
     try {
       let firestoreId = null;
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const docRef = await firestore.collection('reviews').add({
             productId,
@@ -359,14 +397,18 @@ async function startServer() {
       sqliteDb.prepare('INSERT OR REPLACE INTO cart (uid, items, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
         .run(uid, JSON.stringify(items));
 
-      if (firestore) {
+      // CLOUD SYNC (Only if enabled)
+      if (firestore && context.isFirestoreEnabled) {
         try {
           await firestore.collection('users').doc(uid).collection('cart').doc('default').set({
             items,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
-        } catch (fErr) {
-          console.warn('FIRESTORE_CART_SYNC_FAILURE // SILENT_ABORT:', fErr);
+        } catch (fErr: any) {
+          if (fErr.message?.includes('disabled') || fErr.code === 7) {
+            context.isFirestoreEnabled = false;
+          }
+          console.error(`FIRESTORE_CART_SYNC_FAILURE // UID: ${uid} // ERROR: ${fErr.message}`);
         }
       }
 
@@ -385,7 +427,7 @@ async function startServer() {
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const snapshot = await firestore.collection('orders')
             .orderBy('createdAt', 'desc')
@@ -432,7 +474,7 @@ async function startServer() {
     }
 
     try {
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           const docRef = firestore.collection('orders').doc(oldId);
           const doc = await docRef.get();
@@ -473,7 +515,7 @@ async function startServer() {
 
     try {
       let order: any;
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         const doc = await firestore.collection('orders').doc(id).get();
         if (doc.exists) {
           order = { id: doc.id, ...doc.data() };
@@ -553,7 +595,7 @@ async function startServer() {
 
     try {
       let firestoreUpdated = false;
-      if (firestore) {
+      if (firestore && context.isFirestoreEnabled) {
         try {
           await firestore.collection('orders').doc(id).update({
             status,
@@ -721,20 +763,28 @@ async function startServer() {
     const { email, phone, address, city, postalCode, country, orderDetails, total, shipping, paymentId, userId } = req.body;
     const orderId = `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
+    console.log(`PROCESSING_ORDER // ID: ${orderId} // TARGET: ${email}`);
+
     try {
-      // SQL Sync
-      sqliteDb.transaction(() => {
-        const orderStmt = sqliteDb.prepare('INSERT INTO orders (id, uid, email, phone, address, city, postal_code, country, total, shipping_amount, payment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        orderStmt.run(orderId, userId || null, email, phone || null, address || null, city || null, postalCode || null, country || null, total, shipping, paymentId || null);
+      // 1. SQL Sync (PRIMARY)
+      try {
+        sqliteDb.transaction(() => {
+          const orderStmt = sqliteDb.prepare('INSERT INTO orders (id, uid, email, phone, address, city, postal_code, country, total, shipping_amount, payment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+          orderStmt.run(orderId, userId || null, email, phone || null, address || null, city || null, postalCode || null, country || null, total, shipping, paymentId || null);
 
-        const itemStmt = sqliteDb.prepare('INSERT INTO order_items (order_id, product_name, color, size, quantity, price) VALUES (?, ?, ?, ?, ?, ?)');
-        for (const item of orderDetails) {
-          itemStmt.run(orderId, item.name, item.color, item.size, item.quantity, item.price);
-        }
-      })();
+          const itemStmt = sqliteDb.prepare('INSERT INTO order_items (order_id, product_name, color, size, quantity, price) VALUES (?, ?, ?, ?, ?, ?)');
+          for (const item of orderDetails) {
+            itemStmt.run(orderId, item.name, item.color, item.size, item.quantity, item.price);
+          }
+        })();
+        console.log(`ORDER_SQL_PERSISTED // ID: ${orderId}`);
+      } catch (sqlErr) {
+        console.error('ORDER_SQL_CRITICAL_FAILURE:', sqlErr);
+        throw new Error('DATABASE_COMMIT_FAILURE');
+      }
 
-      // FIRESTORE SYNC
-      if (firestore) {
+      // 2. FIRESTORE SYNC (SECONDARY)
+      if (firestore && context.isFirestoreEnabled) {
         try {
           await firestore.collection('orders').doc(orderId).set({
             userId: userId || null,
@@ -754,64 +804,81 @@ async function startServer() {
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
+          console.log(`ORDER_FIRESTORE_SYNCED // ID: ${orderId}`);
         } catch (fErr) {
-          console.error('FIRESTORE_ORDER_SYNC_FAILURE // CONTINUING_WITH_SQL_ONLY:', fErr);
+          console.warn('ORDER_FIRESTORE_SYNC_FAILURE // CONTINUING_WITH_SQL:', fErr);
         }
       }
 
-      const resend = getResendClient();
-      const { data, error } = await resend.emails.send({
-        from: 'P-THREAD <onboarding@resend.dev>',
-        to: [email],
-        subject: 'ARCHIVE_SECURED // Acquisition Receipt Manifest',
-        html: `
-          <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
-            <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // ACQUISITION_RECEIPT</h1>
-            <p style="font-size: 12px; color: #888;">Manifest_ID: ${orderId}</p>
-            
-            <div style="margin: 40px 0;">
-              <h2 style="font-size: 16px; color: #fff; text-transform: uppercase;">Secured Items:</h2>
-              <ul style="list-style: none; padding: 0;">
-                ${orderDetails.map((item: any) => `
-                  <li style="margin-bottom: 15px; border-left: 2px solid #333; padding-left: 15px;">
-                    <strong style="display: block;">${item.name}</strong>
-                    <span style="font-size: 12px; color: #888;">${item.color} / ${item.size} // QTY: ${item.quantity}</span>
-                    <span style="display: block; color: #e61e1e;">₹${item.price}.00</span>
-                  </li>
-                `).join('')}
-              </ul>
-            </div>
+      // 3. EMAIL RECEIPT (TERTIARY - NON-BLOCKING)
+      try {
+        const resend = getResendClient();
+        const { error } = await resend.emails.send({
+          from: 'P-THREAD <onboarding@resend.dev>',
+          to: [email],
+          subject: 'ARCHIVE_SECURED // Acquisition Receipt Manifest',
+          html: `
+            <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
+              <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // ACQUISITION_RECEIPT</h1>
+              <p style="font-size: 12px; color: #888;">Manifest_ID: ${orderId}</p>
+              
+              <div style="margin: 40px 0;">
+                <h2 style="font-size: 16px; color: #fff; text-transform: uppercase;">Secured Items:</h2>
+                <ul style="list-style: none; padding: 0;">
+                  ${orderDetails.map((item: any) => `
+                    <li style="margin-bottom: 15px; border-left: 2px solid #333; padding-left: 15px;">
+                      <strong style="display: block;">${item.name}</strong>
+                      <span style="font-size: 12px; color: #888;">${item.color} / ${item.size} // QTY: ${item.quantity}</span>
+                      <span style="display: block; color: #e61e1e;">₹${item.price}.00</span>
+                    </li>
+                  `).join('')}
+                </ul>
+              </div>
 
-            <div style="border-top: 1px solid #333; padding-top: 20px;">
-              <div style="display: flex; gap: 20px; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between;">
-                  <span style="color: #888;">SHIPPING_SURCHARGE:</span>
-                  <span style="color: #fff;">₹${shipping}.00</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                  <span style="color: #888;">ACQUISITION_TOTAL:</span>
-                  <strong style="color: #fff; font-size: 20px;">₹${total}.00</strong>
+              <div style="border-top: 1px solid #333; padding-top: 20px;">
+                <div style="display: flex; gap: 20px; flex-direction: column;">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #888;">SHIPPING_SURCHARGE:</span>
+                    <span style="color: #fff;">₹${shipping}.00</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #888;">ACQUISITION_TOTAL:</span>
+                    <strong style="color: #fff; font-size: 20px;">₹${total}.00</strong>
+                  </div>
                 </div>
               </div>
+
+              <p style="margin-top: 40px; font-size: 10px; color: #444; line-height: 1.6;">
+                LOGISTICS_NOTE: Your items are now moving through the distribution grid. Tracking manifests will be updated in your terminal as sectors are cleared.
+              </p>
             </div>
+          `,
+        });
 
-            <p style="margin-top: 40px; font-size: 10px; color: #444; line-height: 1.6;">
-              LOGISTICS_NOTE: Your items are now moving through the distribution grid. Tracking manifests will be updated in your terminal as sectors are cleared.
-            </p>
-          </div>
-        `,
-      });
-
-      if (error) {
-        console.error('Resend Error:', error);
-        return res.status(400).json({ error });
+        if (error) {
+          console.warn('EMAIL_DISPATCH_FAILED // SILENT:', error);
+        } else {
+          console.log(`EMAIL_DISPATCHED // ID: ${orderId}`);
+        }
+      } catch (mailErr) {
+        console.warn('RESEND_NOT_CONFIGURED // EMAIL_SKIPPED');
       }
 
-      res.status(200).json({ success: true, orderId, data });
-    } catch (err) {
-      console.error('Server Internal Error:', err);
-      res.status(500).json({ error: 'Internal server error' });
+      // 4. RESPONSE SUCCESS
+      res.status(200).json({ success: true, orderId });
+    } catch (err: any) {
+      console.error('SERVER_ORDER_HANDLER_FAILURE:', err);
+      res.status(500).json({ 
+        error: 'ORDER_COMMIT_FAILURE', 
+        message: err.message || 'INTERNAL_PROTOCOL_ERROR' 
+      });
     }
+  });
+
+  // API 404 Handler (to avoid falling through to HTML SPA fallback)
+  app.use('/api', (req, res) => {
+    console.warn(`API_404: ${req.method} ${req.url}`);
+    res.status(404).json({ error: 'API_ENDPOINT_NOT_FOUND', path: req.url });
   });
 
   // Global Error Handler for API Routes
@@ -821,11 +888,6 @@ async function startServer() {
       error: 'INTERNAL_SERVER_ERROR', 
       message: err.message || 'An unexpected protocol error occurred.'
     });
-  });
-
-  // API 404 Handler (to avoid falling through to HTML SPA fallback)
-  app.use('/api', (req, res) => {
-    res.status(404).json({ error: 'API_ENDPOINT_NOT_FOUND' });
   });
 
   // Vite middleware for development
