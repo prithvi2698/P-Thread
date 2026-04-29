@@ -181,7 +181,12 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const handleProceed = async () => {
     if (step === 1) {
       if (!isPhoneVerified) {
-        setLogisticsError('PHONE_VERIFICATION_REQUIRED // SECURE_HANDSHAKE_MISSING');
+        if (formData.phone && formData.phone.length >= 10) {
+          setLogisticsError('INITIATING_AUTO_VERIFICATION // PLEASE_COMPLETE_HANDSHAKE');
+          startPhoneVerification();
+          return;
+        }
+        setLogisticsError('PHONE_VERIFICATION_REQUIRED // PLEASE_CLICK_VERIFY');
         // Simple shake animation trigger by resetting and setting error
         setTimeout(() => {
           if (stepHeadingRef.current) {
@@ -410,10 +415,10 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   return (
     <div className="min-h-screen bg-bg text-ink flex flex-col lg:flex-row">
       {/* Left: Checkout Form */}
-      <div className="flex-1 p-8 md:p-16 lg:p-24 overflow-y-auto">
+      <div className="flex-1 p-5 sm:p-8 md:p-16 lg:p-24 overflow-y-auto">
         <button 
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-muted hover:text-accent transition-colors mb-16"
+          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-muted hover:text-accent transition-colors mb-12 sm:mb-16"
           aria-label="Abort Mission and return to previous page"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -430,7 +435,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               >
                 <motion.div 
                   initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                  className="bg-surface border border-accent p-6 md:p-10 max-w-sm w-full space-y-6"
+                  className="bg-surface border border-accent p-10 max-w-sm w-full space-y-6"
                 >
                   <div>
                     <span className="text-[10px] font-black tracking-[0.4em] text-accent uppercase block mb-2">Security_Interception</span>
@@ -520,7 +525,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                       <Smartphone className="w-3 h-3 text-accent" />
                       Phone Sequence
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <input 
                         id="phone"
                         type="tel" 
@@ -533,7 +538,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                           setLogisticsError('');
                         }}
                         disabled={isPhoneVerified}
-                        className={`flex-1 bg-bg border ${isPhoneVerified ? 'border-accent/30 text-accent' : 'border-white/10'} p-4 text-xs font-mono focus:border-accent outline-none`} 
+                        className={`flex-1 bg-bg border ${isPhoneVerified ? 'border-accent/30 text-accent' : 'border-white/10'} p-4 text-xs font-mono focus:border-accent outline-none min-w-0`} 
                         placeholder="+91 XXXX-XXXXXX"
                         required
                       />
@@ -542,21 +547,21 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                           type="button"
                           onClick={startPhoneVerification}
                           disabled={isVerifying || !formData.phone}
-                          className="bg-white/5 border border-white/10 px-4 text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all disabled:opacity-50 whitespace-nowrap"
+                          className="bg-white/5 border border-white/10 px-6 py-4 sm:py-0 text-[10px] sm:text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all disabled:opacity-50 whitespace-nowrap min-h-[50px] sm:min-h-0"
                         >
                           {isVerifying ? 'SYNCING...' : 'VERIFY'}
                         </button>
                       )}
                       {isPhoneVerified && (
-                        <div className="bg-accent/10 border border-accent/30 px-4 flex items-center gap-2 text-[9px] font-black text-accent uppercase tracking-widest">
+                        <div className="bg-accent/10 border border-accent/30 px-4 py-4 sm:py-0 flex items-center justify-center gap-2 text-[9px] font-black text-accent uppercase tracking-widest min-h-[50px] sm:min-h-0">
                           <ShieldCheck className="w-3 h-3" />
                           VERIFIED
                         </div>
                       )}
                     </div>
-                    {logisticsError && step === 1 && (
-                      <p className="text-[9px] font-mono text-accent italic uppercase mt-2">
-                        {logisticsError}
+                    {logisticsError && step === 1 && !isPhoneVerified && (
+                      <p className="text-[9px] font-mono text-accent italic uppercase mt-2 animate-pulse">
+                        {logisticsError} // CLICK VERIFY TO UNLOCK
                       </p>
                     )}
                   </div>

@@ -304,7 +304,7 @@ export default function ProductModal({
           </div>
 
           {/* Right: Product Info */}
-          <div className="w-full md:w-1/2 p-6 md:p-10 flex flex-col bg-surface border-t md:border-t-0 md:border-l border-white/5 overflow-y-auto md:custom-scrollbar pb-10">
+          <div className="w-full md:w-1/2 p-5 sm:p-6 md:p-10 flex flex-col bg-surface border-t md:border-t-0 md:border-l border-white/5 overflow-y-auto md:custom-scrollbar pb-10">
             <div className="mb-6 md:mb-8">
               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent block mb-2">
                 Serial // {product.category}

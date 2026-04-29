@@ -117,7 +117,7 @@ export default function CartDrawer({ isOpen, onClose, items, onUpdateQuantity, o
               )}
             </div>
 
-            <div className="p-8 bg-surface border-t border-white/5 space-y-6">
+            <div className="p-5 sm:p-8 bg-surface border-t border-white/5 space-y-6">
               <div className="space-y-4">
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em] text-muted">
                   <span>Manifest Subtotal</span>

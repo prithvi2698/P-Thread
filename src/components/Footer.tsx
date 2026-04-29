@@ -8,7 +8,7 @@ interface FooterProps {
 
 export default function Footer({ onLoginToggle, user, onAdminToggle }: FooterProps) {
   return (
-    <footer className="bg-bg text-ink py-24 md:py-32 px-6 md:px-16 border-t border-white/5">
+    <footer className="bg-bg text-ink py-12 sm:py-24 md:py-32 px-6 md:px-16 border-t border-white/5">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-12 md:space-y-0">
         <div className="space-y-4">
           <div className="flex flex-col">

@@ -219,41 +219,39 @@ function AppContent() {
   };
 
   return (
-    <div className="flex min-h-screen bg-bg selection:bg-accent selection:text-white">
+    <div className="flex min-h-screen bg-bg">
       {/* Vertical Rail (Sidebar) - Hidden on mobile */}
-      <aside className="hidden lg:flex w-24 border-r border-white/5 flex-col justify-between items-center py-12 shrink-0 bg-bg sticky top-0 h-screen z-50 overflow-hidden">
-        <div className="flex flex-col items-center gap-16">
+      <aside className="hidden lg:flex w-20 border-r border-white/5 flex flex-col justify-between items-center py-10 shrink-0 bg-bg sticky top-0 h-screen z-50">
+        <div className="flex flex-col items-center gap-12">
           <Link 
             to="/" 
             onClick={handleLogoClick}
-            className="vertical-text font-black text-3xl tracking-[0.25em] uppercase text-white/90 hover:text-accent transition-all duration-500 hover:scale-105"
+            className="vertical-text font-black text-2xl md:text-3xl tracking-[0.2em] uppercase text-ink/80 hover:text-accent transition-colors"
           >
             P-THREAD
           </Link>
           
-          <div className="flex flex-col gap-10 py-10 items-center relative">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[1px] bg-white/10" />
-            <span className="vertical-text text-[9px] font-black uppercase tracking-[0.4em] text-accent/60">
-              EST. 2026 // PROTOCOL
+          <div className="flex flex-col gap-8 py-8 items-center border-y border-white/5">
+            <span className="vertical-text text-[10px] font-black uppercase tracking-[0.4em] text-accent/50">
+              Core_Archive_Series_01
             </span>
-            <div className="vertical-text text-[8px] font-black uppercase tracking-[0.25em] text-muted/40 max-h-[250px] overflow-hidden leading-relaxed">
-              ARCHIVE_01_SERIES // TACTICAL_SYMMETRY // SHADOW_OPERATOR
+            <div className="vertical-text text-[8px] font-black uppercase tracking-[0.2em] text-muted max-h-[300px] overflow-hidden opacity-50">
+              Tactical silhouettes inspired by shadow transformations. Engineered for the operator.
             </div>
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-[1px] bg-white/10" />
           </div>
         </div>
 
         <div className="flex flex-col items-center gap-12">
-          <div className="w-[1px] h-24 bg-gradient-to-b from-transparent via-accent/30 to-transparent" />
-          <div className="flex flex-col gap-8 text-[9px] uppercase font-black tracking-widest text-muted">
-            <span className="vertical-text opacity-30 cursor-default">V_0.1.ARCHIVE</span>
-            <a href="https://instagram.com" target="_blank" rel="noreferrer" className="hover:text-accent transition-all vertical-text hover:translate-y-[-2px]">SYNC_IG</a>
+          <div className="w-[1px] h-20 bg-accent/20" />
+          <div className="flex flex-col gap-6 text-[9px] uppercase font-black tracking-widest text-muted">
+            <span className="vertical-text opacity-50 cursor-default">Archive_v0.1</span>
+            <a href="#" className="hover:text-accent transition-colors vertical-text">Comm_Link // IG</a>
           </div>
           <div className="w-[1px] h-12 bg-white/5" />
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen relative">
+      <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
         {!isCheckout && (
           <Header 
             cartCount={cartCount} 
@@ -274,41 +272,37 @@ function AppContent() {
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 50, opacity: 0 }}
-              className="fixed bottom-12 left-1/2 lg:left-[calc(50%+4rem)] -translate-x-1/2 z-[200] bg-white text-bg px-6 md:px-8 py-4 text-[10px] font-black uppercase tracking-[0.3em] shadow-2xl flex items-center gap-4 border-l-4 border-accent w-[calc(100%-2rem)] max-w-sm lg:w-auto"
+              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] bg-accent text-white px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl flex items-center gap-3"
             >
-              <div className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse shrink-0" />
-              <span className="truncate">{notification}</span>
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+              {notification}
             </motion.div>
           )}
         </AnimatePresence>
 
         <Routes>
           <Route path="/" element={
-            <main className="flex flex-col gap-32 md:gap-48 pb-32">
+            <main className="flex flex-col gap-24 md:gap-32">
               <Hero />
-              <div className="w-full max-w-[1920px] mx-auto">
-                <ProductList 
-                  products={products.filter(p => !['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
-                  onAddToCart={addToCart}
-                  onWishlistToggle={toggleWishlist}
-                  wishlist={wishlist}
-                  onViewDetails={setSelectedProduct}
-                  title="Global Archive"
-                  id="series-01"
-                />
-              </div>
-              <div className="w-full max-w-[1920px] mx-auto border-t border-white/5">
-                <ProductList 
-                  products={products.filter(p => ['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
-                  onAddToCart={addToCart}
-                  onWishlistToggle={toggleWishlist}
-                  wishlist={wishlist}
-                  onViewDetails={setSelectedProduct}
-                  title="Signature Series"
-                  id="bts-archive"
-                  accentColor="#8b5cf6"
-                />
-              </div>
+              <ProductList 
+                products={products.filter(p => !['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
+                onAddToCart={addToCart}
+                onWishlistToggle={toggleWishlist}
+                wishlist={wishlist}
+                onViewDetails={setSelectedProduct}
+                title="Global Archive"
+                id="series-01"
+              />
+              <ProductList 
+                products={products.filter(p => ['11', '12', '13', '14', '16', '17', '18'].includes(p.id))} 
+                onAddToCart={addToCart}
+                onWishlistToggle={toggleWishlist}
+                wishlist={wishlist}
+                onViewDetails={setSelectedProduct}
+                title="Signature Series"
+                id="bts-archive"
+                accentColor="#8b5cf6"
+              />
             </main>
           } />
           <Route path="/about" element={<About />} />

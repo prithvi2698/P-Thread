@@ -41,7 +41,7 @@ export default function ProductCard({
       }`}
     >
       <div 
-        className={`relative ${isPoster ? 'aspect-auto h-[450px] md:h-[700px]' : 'aspect-[4/5]'} overflow-hidden bg-white/[0.02] flex items-center justify-center cursor-pointer`}
+        className={`relative ${isPoster ? 'aspect-auto h-[450px] md:h-[600px]' : 'aspect-[3/4]'} overflow-hidden bg-bg/50 flex items-center justify-center cursor-pointer`}
         onClick={() => {
           if (product.price !== undefined) {
             onViewDetails?.(product);
@@ -49,14 +49,19 @@ export default function ProductCard({
         }}
       >
         <motion.img 
-          initial={{ opacity: 0, scale: 1.1 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          animate={{ opacity: (isHovered && hasAltImage) ? 0.3 : 1, filter: (isHovered && hasAltImage) ? 'blur(15px)' : 'blur(0px)' }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ scale: 1.2, opacity: 0, x: 40 }}
+          whileInView={{ scale: 1, opacity: 1, x: 0 }}
+          animate={{ opacity: (isHovered && hasAltImage) ? 0.4 : 1, filter: (isHovered && hasAltImage) ? 'blur(10px)' : 'blur(0px)' }}
+          transition={{ 
+            duration: 0.8, 
+            ease: [0.16, 1, 0.3, 1],
+            opacity: { duration: 0.4 },
+            filter: { duration: 0.4 }
+          }}
           viewport={{ once: true }}
-          src={product.image || (product.images && product.images[0])} 
+          src={product.image || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop'} 
           alt={product.name} 
-          className="w-full h-full object-contain p-8 md:p-12 transition-transform duration-700 group-hover:scale-110"
+          className="w-full h-full object-contain p-4"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
@@ -134,7 +139,7 @@ export default function ProductCard({
                 )}
                 <span className="text-sm font-mono font-bold" style={{ color: accentColor }}>₹{product.price}</span>
               </div>
-              <div className="flex gap-2 mt-1">
+              <div className="flex flex-wrap justify-end gap-1.5 mt-1">
                 {product.sizes.map(size => (
                   <button
                     key={size}
@@ -144,7 +149,7 @@ export default function ProductCard({
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = accentColor}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                    className="w-8 h-8 md:w-5 md:h-5 flex items-center justify-center text-[10px] md:text-[8px] font-bold bg-white text-bg hover:text-white transition-colors border border-white/10"
+                    className="w-10 h-10 md:w-5 md:h-5 flex items-center justify-center text-[11px] md:text-[8px] font-bold bg-white text-bg hover:text-white transition-colors border border-white/10"
                     title={`Add ${size}`}
                   >
                     {size}
