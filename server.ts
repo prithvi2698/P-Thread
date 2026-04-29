@@ -590,14 +590,14 @@ async function startServer() {
   });
 
   app.post('/api/send-receipt', async (req, res) => {
-    const { email, orderDetails, total, shipping, paymentId, userId } = req.body;
+    const { email, phone, address, city, postalCode, country, orderDetails, total, shipping, paymentId, userId } = req.body;
     const orderId = `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
     try {
       // SQL Sync
       sqliteDb.transaction(() => {
-        const orderStmt = sqliteDb.prepare('INSERT INTO orders (id, uid, email, total, shipping_amount, payment_id) VALUES (?, ?, ?, ?, ?, ?)');
-        orderStmt.run(orderId, userId || null, email, total, shipping, paymentId || null);
+        const orderStmt = sqliteDb.prepare('INSERT INTO orders (id, uid, email, phone, address, city, postal_code, country, total, shipping_amount, payment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        orderStmt.run(orderId, userId || null, email, phone || null, address || null, city || null, postalCode || null, country || null, total, shipping, paymentId || null);
 
         const itemStmt = sqliteDb.prepare('INSERT INTO order_items (order_id, product_name, color, size, quantity, price) VALUES (?, ?, ?, ?, ?, ?)');
         for (const item of orderDetails) {
@@ -611,6 +611,13 @@ async function startServer() {
           await firestore.collection('orders').doc(orderId).set({
             userId: userId || null,
             email,
+            phone: phone || null,
+            shippingAddress: {
+              address: address || null,
+              city: city || null,
+              postalCode: postalCode || null,
+              country: country || null
+            },
             total,
             shippingAmount: shipping,
             paymentId: paymentId || null,

@@ -27,6 +27,11 @@ export function initializeSql() {
       id TEXT PRIMARY KEY,
       uid TEXT,
       email TEXT NOT NULL,
+      phone TEXT,
+      address TEXT,
+      city TEXT,
+      postal_code TEXT,
+      country TEXT,
       total REAL NOT NULL,
       shipping_amount REAL NOT NULL,
       payment_id TEXT,
@@ -99,6 +104,16 @@ export function initializeSql() {
     console.log('MIGRATING_SQL_ARCHIVE // ADDING_ORIGINAL_PRICE_COLUMN');
     db.exec('ALTER TABLE products ADD COLUMN original_price REAL');
   }
+
+  // Migration: Add shipping and phone columns to orders if missing
+  const orderInfo = db.prepare("PRAGMA table_info(orders)").all() as any[];
+  const newCols = ['phone', 'address', 'city', 'postal_code', 'country'];
+  newCols.forEach(col => {
+    if (!orderInfo.some(c => c.name === col)) {
+      console.log(`MIGRATING_SQL_ARCHIVE // ADDING_${col.toUpperCase()}_COLUMN`);
+      db.exec(`ALTER TABLE orders ADD COLUMN ${col} TEXT`);
+    }
+  });
 }
 
 export function seedProducts(products: any[]) {

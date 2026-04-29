@@ -116,87 +116,15 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [processState, setProcessState] = useState('');
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [otpInput, setOtpInput] = useState('');
-  const [verificationError, setVerificationError] = useState('');
-  const [showOtpInput, setShowOtpInput] = useState(false);
-
-  const startPhoneVerification = async () => {
-    if (!formData.phone || formData.phone.length < 10) {
-      setLogisticsError('INVALID_PHONE_SEQUENCE // MIN_LENGTH_REQUIRED');
-      return;
-    }
-    
-    setIsVerifying(true);
-    try {
-      const res = await fetch('/api/verify-init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formData.phone })
-      });
-      if (res.ok) {
-        setShowOtpInput(true);
-        setVerificationError('');
-      }
-    } catch (err) {
-      setVerificationError('LOGISTICS_PROTOCOL_FAILURE');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    if (otpInput === '123456') {
-      setIsPhoneVerified(true);
-      setShowOtpInput(false);
-      setVerificationError('');
-      setLogisticsError('');
-      return;
-    }
-    
-    setIsVerifying(true);
-    try {
-      const res = await fetch('/api/verify-confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formData.phone, code: otpInput })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIsPhoneVerified(true);
-        setShowOtpInput(false);
-        setVerificationError('');
-        setLogisticsError('');
-      } else {
-        setVerificationError('INVALID_ACCESS_CODE // AUTH_DENIED');
-      }
-    } catch (err) {
-      setVerificationError('HANDSHAKE_TIMEOUT');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
 
   const handleProceed = async () => {
     if (step === 1) {
-      if (!isPhoneVerified) {
-        if (formData.phone && formData.phone.length >= 10) {
-          setLogisticsError('INITIATING_AUTO_VERIFICATION // PLEASE_COMPLETE_HANDSHAKE');
-          startPhoneVerification();
-          return;
-        }
-        setLogisticsError('PHONE_VERIFICATION_REQUIRED // PLEASE_CLICK_VERIFY');
-        // Simple shake animation trigger by resetting and setting error
-        setTimeout(() => {
-          if (stepHeadingRef.current) {
-            stepHeadingRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 100);
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+        setLogisticsError('ACQUIRER_PROFILE_INCOMPLETE // ALL_FIELDS_REQUIRED');
         return;
       }
-      if (!formData.firstName || !formData.lastName || !formData.email) {
-        setLogisticsError('ACQUIRER_PROFILE_INCOMPLETE // ALL_FIELDS_REQUIRED');
+      if (formData.phone.length < 10) {
+        setLogisticsError('INVALID_PHONE_SEQUENCE // MIN_LENGTH_REQUIRED');
         return;
       }
       setLogisticsError('');
@@ -313,6 +241,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   email: formData.email,
+                  phone: formData.phone,
+                  address: formData.address,
+                  city: formData.city,
+                  postalCode: formData.postalCode,
+                  country: formData.country,
                   shipping,
                   total,
                   paymentId: response.razorpay_payment_id,
@@ -426,56 +359,6 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         </button>
 
         <div className="max-w-2xl">
-          {/* OTP INTERRUPT MODAL */}
-          <AnimatePresence>
-            {showOtpInput && (
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-bg/80 backdrop-blur-sm"
-              >
-                <motion.div 
-                  initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                  className="bg-surface border border-accent p-10 max-w-sm w-full space-y-6"
-                >
-                  <div>
-                    <span className="text-[10px] font-black tracking-[0.4em] text-accent uppercase block mb-2">Security_Interception</span>
-                    <h3 className="text-xl font-black uppercase tracking-tighter">Enter Access Code</h3>
-                    <p className="text-[9px] font-mono text-muted uppercase mt-2">A temporary sequence-01 has been dispatched to {formData.phone} (Testing? Code: 123456)</p>
-                  </div>
-                  
-                  <input 
-                    type="text"
-                    value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full bg-bg border border-white/10 p-4 text-center text-xl font-mono tracking-[1em] focus:border-accent outline-none"
-                    placeholder="000000"
-                    autoFocus
-                  />
-
-                  {verificationError && (
-                    <p className="text-[9px] font-mono text-accent text-center uppercase">{verificationError}</p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <button 
-                      onClick={() => setShowOtpInput(false)}
-                      className="py-4 text-[9px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/5"
-                    >
-                      Abort
-                    </button>
-                    <button 
-                      onClick={verifyOtp}
-                      disabled={isVerifying || otpInput.length < 4}
-                      className="bg-accent text-white py-4 text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-bg transition-all disabled:opacity-50"
-                    >
-                      {isVerifying ? 'Verifying...' : 'Authorize'}
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <div className="mb-16">
             <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase mb-2 block">Acquirer_Profile</span>
             <h1 className="text-2xl sm:text-4xl md:text-6xl font-black tracking-tighter uppercase mb-4" tabIndex={-1} ref={stepHeadingRef}>
@@ -534,36 +417,13 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                         onChange={(e) => {
                           const val = e.target.value.replace(/[^\d+]/g, '');
                           setFormData(prev => ({ ...prev, phone: val }));
-                          setIsPhoneVerified(false);
                           setLogisticsError('');
                         }}
-                        disabled={isPhoneVerified}
-                        className={`flex-1 bg-bg border ${isPhoneVerified ? 'border-accent/30 text-accent' : 'border-white/10'} p-4 text-xs font-mono focus:border-accent outline-none min-w-0`} 
+                        className={`flex-1 bg-surface border border-white/10 p-4 text-xs font-mono focus:border-accent outline-none min-w-0`} 
                         placeholder="+91 XXXX-XXXXXX"
                         required
                       />
-                      {!isPhoneVerified && (
-                        <button
-                          type="button"
-                          onClick={startPhoneVerification}
-                          disabled={isVerifying || !formData.phone}
-                          className="bg-white/5 border border-white/10 px-6 py-4 sm:py-0 text-[10px] sm:text-[9px] font-black uppercase tracking-widest hover:border-accent hover:text-accent transition-all disabled:opacity-50 whitespace-nowrap min-h-[50px] sm:min-h-0"
-                        >
-                          {isVerifying ? 'SYNCING...' : 'VERIFY'}
-                        </button>
-                      )}
-                      {isPhoneVerified && (
-                        <div className="bg-accent/10 border border-accent/30 px-4 py-4 sm:py-0 flex items-center justify-center gap-2 text-[9px] font-black text-accent uppercase tracking-widest min-h-[50px] sm:min-h-0">
-                          <ShieldCheck className="w-3 h-3" />
-                          VERIFIED
-                        </div>
-                      )}
                     </div>
-                    {logisticsError && step === 1 && !isPhoneVerified && (
-                      <p className="text-[9px] font-mono text-accent italic uppercase mt-2 animate-pulse">
-                        {logisticsError} // CLICK VERIFY TO UNLOCK
-                      </p>
-                    )}
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="firstName" className="text-[9px] font-black uppercase text-muted tracking-widest">First Name</label>
@@ -763,9 +623,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     </div>
                   ) : (
                     <span className="flex items-center gap-3">
-                      {step === 1 && !isPhoneVerified && <Smartphone className="w-4 h-4 animate-pulse" />}
-                      {step === 1 && !isPhoneVerified ? 'VERIFY PHONE TO UNLOCK SECTOR' : 
-                       step === 3 ? `AUTHORIZE & PAY ₹${total}` : 
+                      {step === 3 ? `AUTHORIZE & PAY ₹${total}` : 
                        'MOVE TO NEXT SECTOR'}
                     </span>
                   )}
