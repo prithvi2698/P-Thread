@@ -184,6 +184,19 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         })
       });
       
+      const receiptContentType = receiptRes.headers.get("content-type");
+      if (!receiptRes.ok) {
+        let errorMsg = 'RECEIPT_DISPATCH_FAILURE';
+        if (receiptContentType && receiptContentType.includes("application/json")) {
+          const errorData = await receiptRes.json();
+          errorMsg = errorData.error || errorMsg;
+        } else {
+          const text = await receiptRes.text();
+          errorMsg = `RECEIPT_ERROR (${receiptRes.status}): ${text.substring(0, 50)}...`;
+        }
+        throw new Error(errorMsg);
+      }
+      
       const receiptData = await receiptRes.json();
       if (receiptData.orderId) {
         setCompletedOrderId(receiptData.orderId);
@@ -227,6 +240,19 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           }))
         })
       });
+      
+      const receiptContentType = receiptRes.headers.get("content-type");
+      if (!receiptRes.ok) {
+        let errorMsg = 'RECEIPT_DISPATCH_FAILURE';
+        if (receiptContentType && receiptContentType.includes("application/json")) {
+          const errorData = await receiptRes.json();
+          errorMsg = errorData.error || errorMsg;
+        } else {
+          const text = await receiptRes.text();
+          errorMsg = `RECEIPT_ERROR (${receiptRes.status}): ${text.substring(0, 50)}...`;
+        }
+        throw new Error(errorMsg);
+      }
       
       const receiptData = await receiptRes.json();
       if (receiptData.orderId) {
