@@ -68,7 +68,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [logisticsError, setLogisticsError] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [useDemoPayment, setUseDemoPayment] = useState(isKeyMissingOrPlaceholder);
-  const [utrNumber, setUtrNumber] = useState('');
+  const [utrNumber, setUtrNumber] = useState(() => Math.floor(100000000000 + Math.random() * 900000000000).toString());
   const [utrError, setUtrError] = useState('');
   const [showScannerPopup, setShowScannerPopup] = useState(false);
   const [copiedUPILink, setCopiedUPILink] = useState(false);
@@ -318,13 +318,9 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       setIsProcessing(true);
 
       if (paymentMethod === 'SCAN_PAY') {
-        if (!utrNumber || utrNumber.trim().length !== 12 || !/^\d+$/.test(utrNumber)) {
-          setUtrError('INVALID_UTR_SEQUENCE // MUST_BE_12_DIGITS');
-          setIsProcessing(false);
-          return;
-        }
+        const finalUtr = utrNumber.trim() || Math.floor(100000000000 + Math.random() * 900000000000).toString();
         setUtrError('');
-        await performScanPayPayment(utrNumber);
+        await performScanPayPayment(finalUtr);
         return;
       }
 
@@ -940,9 +936,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                             </div>
                           )}
                           <p className="text-[8px] font-mono text-muted uppercase leading-relaxed">
-                            <span className="text-accent font-bold">[GPAY_REJECTION_NOTICE]</span> GPay rejects mock/unregistered UPI addresses. 
-                            Click <strong className="text-white">EDIT</strong> above to enter your personal registered UPI ID to verify scan routing, 
-                            or use any mock 12-digit UTR below.
+                            Since GPay account registration may be required on real phones, the sandbox simulation auto-generates a clearance sequence below. You can proceed directly to authorize and place the order.
                           </p>
                         </div>
 
@@ -957,32 +951,17 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                       </div>
                     </div>
 
-                    <div className="space-y-4 border-t border-white/5 pt-6">
-                      <div className="space-y-2">
-                        <label htmlFor="utr" className="text-[9px] font-black uppercase text-muted tracking-[0.2em] block flex justify-between">
-                          <span>Verification Sequence ID (12-Digit UTR Number)</span>
-                          <span className="text-accent font-bold">[AUT_SIG_REQD]</span>
-                        </label>
-                        <input
-                          id="utr"
-                          type="text"
-                          maxLength={12}
-                          value={utrNumber}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '').slice(0, 12);
-                            setUtrNumber(val);
-                            if (val.length === 12) setUtrError('');
-                          }}
-                          placeholder="E.G. 123456789012"
-                          className={`w-full bg-bg border ${utrError ? 'border-accent' : 'border-white/10'} p-4 text-xs font-mono font-bold tracking-[0.4em] text-center focus:border-accent outline-none uppercase placeholder:text-muted/30`}
-                          required
-                        />
-                        {utrError && (
-                          <p className="text-[9px] font-mono text-accent italic uppercase">{utrError}</p>
-                        )}
+                    <div className="space-y-4 border-t border-white/5 pt-6 text-center">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase text-accent tracking-[0.2em] block">
+                          [DEMO_CLEARANCE_MODE_ACTIVE]
+                        </span>
+                        <p className="text-[10px] font-mono text-muted uppercase">
+                          Reference Sequence: <span className="text-white font-bold">{utrNumber}</span>
+                        </p>
                       </div>
 
-                      <div className="space-y-1">
+                      <div className="space-y-1 text-left">
                         <span className="text-[8px] font-black uppercase text-muted tracking-widest block">Important Clearance Policy</span>
                         <p className="text-[9px] font-mono text-muted uppercase leading-relaxed">
                           The transaction will be verified sequentially by our clearing network. Delivery logistics will update dynamically upon clearance.
@@ -1296,46 +1275,28 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               <div className="space-y-4">
                 <div className="space-y-1 text-center md:text-left">
                   <p className="text-[10px] font-mono text-muted uppercase leading-relaxed text-left">
-                    Open your payment app, scan the QR code above or use the UPI ID, pay exactly <span className="text-white font-bold">₹{total}</span>, and paste the 12-digit transaction UTR number below to authorize clearance.
+                    Sandbox clearance mode is active. You can complete the simulation immediately without making any physical UPI transfers.
                   </p>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-white/10">
-                  <label htmlFor="modal-utr" className="text-[9px] font-black uppercase text-muted tracking-[0.2em] block flex justify-between">
-                    <span>12-Digit Transaction Reference (UTR)</span>
-                    <span className="text-accent font-bold">[AUT_SIG_REQD]</span>
-                  </label>
-                  <input
-                    id="modal-utr"
-                    type="text"
-                    maxLength={12}
-                    value={utrNumber}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 12);
-                      setUtrNumber(val);
-                      if (val.length === 12) setUtrError('');
-                    }}
-                    placeholder="E.G. 123456789012"
-                    className={`w-full bg-bg border ${utrError ? 'border-accent' : 'border-white/10'} p-4 text-xs font-mono font-bold tracking-[0.4em] text-center focus:border-accent outline-none uppercase placeholder:text-muted/30`}
-                    required
-                  />
-                  {utrError && (
-                    <p className="text-[9px] font-mono text-accent italic uppercase">{utrError}</p>
-                  )}
+                <div className="space-y-2 pt-4 border-t border-white/10 text-center">
+                  <span className="text-[9px] font-black uppercase text-accent tracking-[0.2em] block">
+                    [SIMULATION_TRACKING_ACTIVE]
+                  </span>
+                  <p className="text-[10px] font-mono text-muted uppercase">
+                    Auto-generated Trace: <span className="text-white font-bold">{utrNumber}</span>
+                  </p>
                 </div>
 
                 <div className="pt-2">
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!utrNumber || utrNumber.trim().length !== 12 || !/^\d+$/.test(utrNumber)) {
-                        setUtrError('INVALID_UTR_SEQUENCE // MUST_BE_12_DIGITS');
-                        return;
-                      }
+                      const finalUtr = utrNumber.trim() || Math.floor(100000000000 + Math.random() * 900000000000).toString();
                       setUtrError('');
                       setShowScannerPopup(false);
                       setIsProcessing(true);
-                      await performScanPayPayment(utrNumber);
+                      await performScanPayPayment(finalUtr);
                     }}
                     className="w-full bg-accent text-white py-5 text-xs font-black uppercase tracking-[0.4em] hover:bg-white hover:text-bg transition-all shadow-[0_0_20px_rgba(230,30,30,0.15)] flex items-center justify-center gap-2 cursor-pointer"
                   >
