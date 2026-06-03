@@ -72,9 +72,12 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [utrError, setUtrError] = useState('');
   const [showScannerPopup, setShowScannerPopup] = useState(false);
   const [copiedUPILink, setCopiedUPILink] = useState(false);
+  const [upiAddress, setUpiAddress] = useState('p-thread@axisbank');
+  const [isEditingUpi, setIsEditingUpi] = useState(false);
+  const [tempUpi, setTempUpi] = useState('p-thread@axisbank');
 
   const copyUPIAddress = () => {
-    navigator.clipboard.writeText("p-thread@axisbank");
+    navigator.clipboard.writeText(upiAddress);
     setCopiedUPILink(true);
     setTimeout(() => setCopiedUPILink(false), 2000);
   };
@@ -875,7 +878,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                         />
                         {/* Direct high-res dynamic UPI QR Code */}
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=p-thread@axisbank&pn=p-thread&am=${total}&cu=INR`)}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=${upiAddress}&pn=P-THREAD&am=${total}&cu=INR`)}`}
                           alt="UPI scan and pay routing manifest to secure gateway"
                           className="w-full h-full object-contain relative z-10 group-hover:scale-105 transition-transform duration-300 bg-white p-1.5"
                           referrerPolicy="no-referrer"
@@ -887,11 +890,62 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                         <div className="absolute inset-0 border-2 border-accent/10 pointer-events-none group-hover:border-accent/25 transition-colors" />
                       </div>
 
-                      <div className="space-y-4 mt-4 max-w-md mx-auto">
+                      <div className="space-y-4 mt-4 max-w-sm mx-auto">
                         <span className="text-[10px] font-mono text-accent uppercase block">[TRANSACTION_MATRIX_TOTAL: ₹{total}]</span>
                         <p className="text-[10px] font-mono text-muted uppercase leading-relaxed">
                           Scan the QR above using your preferred UPI provider (GPay, PhonePe, Paytm, BHIM). Ensure the amount is exactly <span className="text-white">₹{total}</span>.
                         </p>
+
+                        <div className="bg-[#111] p-4 border border-white/5 space-y-3 text-left">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[8px] font-black text-muted uppercase tracking-widest">Payee UPI VPA</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isEditingUpi) {
+                                  const trimmed = tempUpi.trim();
+                                  if (trimmed) {
+                                    setUpiAddress(trimmed);
+                                  }
+                                } else {
+                                  setTempUpi(upiAddress);
+                                }
+                                setIsEditingUpi(!isEditingUpi);
+                              }}
+                              className="text-[9px] font-black text-accent hover:underline uppercase"
+                            >
+                              {isEditingUpi ? '[ SAVE ]' : '[ EDIT ]'}
+                            </button>
+                          </div>
+                          {isEditingUpi ? (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={tempUpi}
+                                onChange={(e) => setTempUpi(e.target.value)}
+                                className="flex-1 bg-black border border-white/10 p-2 text-xs font-mono text-white focus:border-accent outline-none"
+                                placeholder="your-registered-id@upi"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-center bg-black/40 p-2 border border-white/5">
+                              <p className="text-[10px] font-mono text-white select-all">{upiAddress}</p>
+                              <button
+                                type="button"
+                                onClick={copyUPIAddress}
+                                className="text-[9px] text-accent font-mono uppercase hover:underline"
+                              >
+                                {copiedUPILink ? 'COPIED' : 'COPY'}
+                              </button>
+                            </div>
+                          )}
+                          <p className="text-[8px] font-mono text-muted uppercase leading-relaxed">
+                            <span className="text-accent font-bold">[GPAY_REJECTION_NOTICE]</span> GPay rejects mock/unregistered UPI addresses. 
+                            Click <strong className="text-white">EDIT</strong> above to enter your personal registered UPI ID to verify scan routing, 
+                            or use any mock 12-digit UTR below.
+                          </p>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => setShowScannerPopup(true)}
@@ -1204,9 +1258,9 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
                   />
 
-                  {/* High Resolution dynamic UPI QR Code */}
+                   {/* High Resolution dynamic UPI QR Code */}
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=p-thread@axisbank&pn=p-thread&am=${total}&cu=INR`)}`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=${upiAddress}&pn=P-THREAD&am=${total}&cu=INR`)}`}
                     alt="P-THREAD UPI Scan Target Manifest"
                     className="w-full h-full object-contain relative z-10 filter contrast-125 bg-white p-2.5"
                     referrerPolicy="no-referrer"
@@ -1233,7 +1287,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   onClick={copyUPIAddress}
                   className="flex items-center justify-between bg-[#070707] border border-white/5 p-3 font-mono text-[10px] text-white hover:border-accent/40 cursor-pointer transition-colors"
                 >
-                  <span className="tracking-wider">p-thread@axisbank</span>
+                  <span className="tracking-wider">{upiAddress}</span>
                   <span className="text-accent hover:underline text-[9px] font-black uppercase text-[10px]">COPY</span>
                 </div>
               </div>
