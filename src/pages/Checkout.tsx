@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck, Tag, Ticket, Smartphone, Wallet, QrCode } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck, Tag, Ticket, Smartphone, Wallet, QrCode, Maximize2, X } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
@@ -70,6 +70,14 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [useDemoPayment, setUseDemoPayment] = useState(isKeyMissingOrPlaceholder);
   const [utrNumber, setUtrNumber] = useState('');
   const [utrError, setUtrError] = useState('');
+  const [showScannerPopup, setShowScannerPopup] = useState(false);
+  const [copiedUPILink, setCopiedUPILink] = useState(false);
+
+  const copyUPIAddress = () => {
+    navigator.clipboard.writeText("p-thread@axisbank");
+    setCopiedUPILink(true);
+    setTimeout(() => setCopiedUPILink(false), 2000);
+  };
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -853,8 +861,12 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     <div className="text-center space-y-4">
                       <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent block">UPI Scan to Authorize Transfer</span>
                       
-                      {/* Beautiful QR Code Scanner styling */}
-                      <div className="relative w-48 h-48 mx-auto bg-[#050505] border border-white/10 p-2 overflow-hidden flex items-center justify-center group shadow-[0_0_30px_rgba(230,30,30,0.08)]">
+                      {/* Beautiful QR Code Scanner styling with popup cursor */}
+                      <div 
+                        onClick={() => setShowScannerPopup(true)}
+                        className="relative w-48 h-48 mx-auto bg-[#050505] border border-white/10 p-2 overflow-hidden flex items-center justify-center group shadow-[0_0_30px_rgba(230,30,30,0.08)] cursor-pointer hover:border-accent/40 transition-all duration-300"
+                        title="Click to zoom scan target"
+                      >
                         {/* Scanning Line anim */}
                         <motion.div 
                           className="absolute left-0 right-0 h-[2px] bg-accent opacity-75 z-20"
@@ -865,17 +877,29 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                         <img 
                           src="https://lh3.googleusercontent.com/d/1TidFSxIwpLyajqVVx45N66qmsdvCVXMz" 
                           alt="UPI scan and pay routing manifest to secure gateway"
-                          className="w-full h-full object-contain relative z-10"
+                          className="w-full h-full object-contain relative z-10 group-hover:scale-105 transition-transform duration-300"
                           referrerPolicy="no-referrer"
                         />
-                        <div className="absolute inset-0 border-2 border-accent/15 pointer-events-none group-hover:border-accent/30 transition-colors" />
+                        <div className="absolute inset-x-0 bottom-0 bg-black/80 py-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 border-t border-accent/25">
+                          <Maximize2 className="w-3 h-3 text-accent animate-pulse" />
+                          <span className="text-[8px] font-black text-accent uppercase tracking-widest">ENLARGE SCAN TARGET</span>
+                        </div>
+                        <div className="absolute inset-0 border-2 border-accent/10 pointer-events-none group-hover:border-accent/25 transition-colors" />
                       </div>
 
-                      <div className="space-y-2 mt-4 max-w-md mx-auto">
+                      <div className="space-y-4 mt-4 max-w-md mx-auto">
                         <span className="text-[10px] font-mono text-accent uppercase block">[TRANSACTION_MATRIX_TOTAL: ₹{total}]</span>
                         <p className="text-[10px] font-mono text-muted uppercase leading-relaxed">
                           Scan the QR above using your preferred UPI provider (GPay, PhonePe, Paytm, BHIM). Ensure the amount is exactly <span className="text-white">₹{total}</span>.
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowScannerPopup(true)}
+                          className="inline-flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-accent/40 text-white text-[9px] font-black uppercase tracking-[0.2em] px-4 py-2.5 transition-all text-center mx-auto cursor-pointer"
+                        >
+                          <Maximize2 className="w-3 h-3 text-accent" />
+                          Launch Fullscreen QR Scanner
+                        </button>
                       </div>
                     </div>
 
@@ -1124,6 +1148,152 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           </div>
         </div>
       </div>
+
+      {/* Scanner Popup Modal */}
+      <AnimatePresence>
+        {showScannerPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="relative w-full max-w-lg bg-[#0a0a0a] border border-white/10 p-6 md:p-8 space-y-6 shadow-[0_0_80px_rgba(230,30,30,0.15)] overflow-y-auto max-h-[90vh]"
+            >
+              {/* Corner Accents */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-accent" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-accent" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-accent" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-accent" />
+
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-mono text-accent uppercase tracking-[0.3em] block">// SECURE_UPI_GATEWAY</span>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-ink flex items-center gap-2">
+                    <QrCode className="w-4 h-4 text-accent" />
+                    AUTHORIZE_TRANSFER_PROTOCOL
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowScannerPopup(false)}
+                  className="p-2 border border-white/15 bg-white/5 hover:border-accent hover:text-accent transition-colors text-white cursor-pointer"
+                  aria-label="Close Scanner"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Main Scanner Visualizer */}
+              <div className="text-center space-y-4">
+                <div className="relative w-56 h-56 mx-auto bg-[#030303] border border-accent/20 p-3 overflow-hidden flex items-center justify-center group shadow-[0_0_40px_rgba(230,30,30,0.12)]">
+                  {/* Glowing corners */}
+                  <div className="absolute inset-0 pointer-events-none border border-accent/10" />
+                  
+                  {/* Real-time scanning laser bar */}
+                  <motion.div 
+                    className="absolute left-0 right-0 h-[2.5px] bg-accent opacity-90 z-20 shadow-[0_0_12px_#e61e1e]"
+                    animate={{ top: ['0%', '100%', '0%'] }}
+                    transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+                  />
+
+                  {/* High Resolution UPI QR Code */}
+                  <img 
+                    src="https://lh3.googleusercontent.com/d/1TidFSxIwpLyajqVVx45N66qmsdvCVXMz" 
+                    alt="P-THREAD UPI Scan Target Manifest"
+                    className="w-full h-full object-contain relative z-10 filter contrast-125 saturate-150"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-2xl font-black text-white italic tracking-tighter block">₹{total}</span>
+                  <span className="text-[10px] font-mono text-accent uppercase tracking-widest block">[VERIFIED AMOUNT IN PROGRESS]</span>
+                </div>
+              </div>
+
+              {/* Quick Copy UPI Address ID */}
+              <div className="bg-[#111] p-4 border border-white/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-black text-muted uppercase tracking-widest">Store UPI String Address</span>
+                  {copiedUPILink ? (
+                    <span className="text-[8px] font-mono text-green-400 uppercase tracking-widest">[ COPIED_TO_CLIPBOARD ]</span>
+                  ) : (
+                    <span className="text-[8px] font-mono text-muted uppercase tracking-widest">[ CLICK_TO_COPY ]</span>
+                  )}
+                </div>
+                <div 
+                  onClick={copyUPIAddress}
+                  className="flex items-center justify-between bg-[#070707] border border-white/5 p-3 font-mono text-[10px] text-white hover:border-accent/40 cursor-pointer transition-colors"
+                >
+                  <span className="tracking-wider">p-thread@axisbank</span>
+                  <span className="text-accent hover:underline text-[9px] font-black uppercase text-[10px]">COPY</span>
+                </div>
+              </div>
+
+              {/* Instructions and Input */}
+              <div className="space-y-4">
+                <div className="space-y-1 text-center md:text-left">
+                  <p className="text-[10px] font-mono text-muted uppercase leading-relaxed text-left">
+                    Open your payment app, scan the QR code above or use the UPI ID, pay exactly <span className="text-white font-bold">₹{total}</span>, and paste the 12-digit transaction UTR number below to authorize clearance.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  <label htmlFor="modal-utr" className="text-[9px] font-black uppercase text-muted tracking-[0.2em] block flex justify-between">
+                    <span>12-Digit Transaction Reference (UTR)</span>
+                    <span className="text-accent font-bold">[AUT_SIG_REQD]</span>
+                  </label>
+                  <input
+                    id="modal-utr"
+                    type="text"
+                    maxLength={12}
+                    value={utrNumber}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                      setUtrNumber(val);
+                      if (val.length === 12) setUtrError('');
+                    }}
+                    placeholder="E.G. 123456789012"
+                    className={`w-full bg-bg border ${utrError ? 'border-accent' : 'border-white/10'} p-4 text-xs font-mono font-bold tracking-[0.4em] text-center focus:border-accent outline-none uppercase placeholder:text-muted/30`}
+                    required
+                  />
+                  {utrError && (
+                    <p className="text-[9px] font-mono text-accent italic uppercase">{utrError}</p>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!utrNumber || utrNumber.trim().length !== 12 || !/^\d+$/.test(utrNumber)) {
+                        setUtrError('INVALID_UTR_SEQUENCE // MUST_BE_12_DIGITS');
+                        return;
+                      }
+                      setUtrError('');
+                      setShowScannerPopup(false);
+                      setIsProcessing(true);
+                      await performScanPayPayment(utrNumber);
+                    }}
+                    className="w-full bg-accent text-white py-5 text-xs font-black uppercase tracking-[0.4em] hover:bg-white hover:text-bg transition-all shadow-[0_0_20px_rgba(230,30,30,0.15)] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    SUBMIT CLEARANCE & VERIFY
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
