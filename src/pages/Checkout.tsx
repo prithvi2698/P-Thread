@@ -60,7 +60,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const isKeyMissingOrPlaceholder = !rzpKey || rzpKey.trim() === '' || rzpKey.includes('YOUR_');
 
   const [step, setStep] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'GATEWAY' | 'SCAN_PAY'>('GATEWAY');
+  const [paymentMethod, setPaymentMethod] = useState<'GATEWAY' | 'SCAN_PAY'>(isKeyMissingOrPlaceholder ? 'SCAN_PAY' : 'GATEWAY');
   const [couponInput, setCouponInput] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
