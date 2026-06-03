@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck, Tag, Ticket, Smartphone, Wallet } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Truck, CreditCard, User, MapPin, PackageCheck, Tag, Ticket, Smartphone, Wallet, QrCode } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
@@ -23,32 +23,53 @@ const VALID_COUPONS: Record<string, number> = {
 
 const SHIPPING_MATRIX: Record<string, number> = {
   'INDIA': 50,
-  'ASIA': 150,
-  'GLOBAL': 300,
+  'ASIA_PAC': 150,
+  'EUROPE': 250,
+  'NORTH_AMERICA': 300,
+  'GLOBAL': 400,
 };
 
 const COUNTRY_REGIONS: Record<string, string> = {
   'India': 'INDIA',
-  'Japan': 'ASIA',
-  'South Korea': 'ASIA',
-  'Singapore': 'ASIA',
-  'USA': 'GLOBAL',
-  'UK': 'GLOBAL',
-  'Germany': 'GLOBAL',
-  'France': 'GLOBAL',
+  'Japan': 'ASIA_PAC',
+  'South Korea': 'ASIA_PAC',
+  'Singapore': 'ASIA_PAC',
+  'Australia': 'ASIA_PAC',
+  'New Zealand': 'ASIA_PAC',
+  'USA': 'NORTH_AMERICA',
+  'Canada': 'NORTH_AMERICA',
+  'UK': 'EUROPE',
+  'Germany': 'EUROPE',
+  'France': 'EUROPE',
+  'Italy': 'EUROPE',
+  'Spain': 'EUROPE',
   'Others': 'GLOBAL',
+};
+
+const REGION_LOGISTICS: Record<string, string> = {
+  'INDIA': 'Surface Protocol // 3-5 Cycles',
+  'ASIA_PAC': 'Air Freight // 7-10 Cycles',
+  'EUROPE': 'Intercontinental // 10-14 Cycles',
+  'NORTH_AMERICA': 'Intercontinental // 10-14 Cycles',
+  'GLOBAL': 'Deep Sector Logistics // 14-21 Cycles',
 };
 
 export default function Checkout({ cart, onComplete, user, onLoginToggle }: CheckoutProps) {
   const navigate = useNavigate();
+  const rzpKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '';
+  const isKeyMissingOrPlaceholder = !rzpKey || rzpKey.trim() === '' || rzpKey.includes('YOUR_');
+
   const [step, setStep] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'GPAY' | 'PHONEPE'>('CARD');
+  const [paymentMethod, setPaymentMethod] = useState<'GATEWAY' | 'SCAN_PAY'>('GATEWAY');
   const [couponInput, setCouponInput] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
   const [activeCoupon, setActiveCoupon] = useState('');
   const [logisticsError, setLogisticsError] = useState('');
   const [paymentError, setPaymentError] = useState('');
+  const [useDemoPayment, setUseDemoPayment] = useState(isKeyMissingOrPlaceholder);
+  const [utrNumber, setUtrNumber] = useState('');
+  const [utrError, setUtrError] = useState('');
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -101,9 +122,10 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
 
   const shippingRegion = COUNTRY_REGIONS[formData.country] || 'GLOBAL';
   const shipping = SHIPPING_MATRIX[shippingRegion];
+  const shippingLabel = REGION_LOGISTICS[shippingRegion];
   const total = Math.max(0, subtotal + shipping - appliedDiscount);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -131,6 +153,94 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [isSuccess, setIsSuccess] = useState(false);
   const [processState, setProcessState] = useState('');
   const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
+
+  const performMockPayment = async () => {
+    setProcessState('INITIATING_MOCK_ALLOCATION');
+    await new Promise(r => setTimeout(r, 1500));
+    
+    setProcessState('DISPATCHING_MOCK_RECEIPT');
+    try {
+      const receiptRes = await fetch('/api/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          city: formData.city,
+          postalCode: formData.postalCode,
+          country: formData.country,
+          shipping,
+          total,
+          paymentId: `MOCK-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+          userId: user?.uid,
+          orderDetails: cart.map((item: any) => ({
+            name: item.name,
+            color: item.selectedColor,
+            size: item.selectedSize,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        })
+      });
+      
+      const receiptData = await receiptRes.json();
+      if (receiptData.orderId) {
+        setCompletedOrderId(receiptData.orderId);
+      }
+      
+      setIsProcessing(false);
+      setIsSuccess(true);
+      onComplete();
+    } catch (error: any) {
+      setPaymentError(`MOCK_SYNC_ERROR: ${error.message}`);
+      setIsProcessing(false);
+    }
+  };
+
+  const performScanPayPayment = async (utr: string) => {
+    setProcessState('RESOLVING_TRANSACTION_MANIFEST');
+    await new Promise(r => setTimeout(r, 1500));
+    
+    setProcessState('DISPATCHING_SECURE_RECEIPT');
+    try {
+      const receiptRes = await fetch('/api/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          city: formData.city,
+          postalCode: formData.postalCode,
+          country: formData.country,
+          shipping,
+          total,
+          paymentId: `UPI-SCAN-${utr}`,
+          userId: user?.uid,
+          orderDetails: cart.map((item: any) => ({
+            name: item.name,
+            color: item.selectedColor,
+            size: item.selectedSize,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        })
+      });
+      
+      const receiptData = await receiptRes.json();
+      if (receiptData.orderId) {
+        setCompletedOrderId(receiptData.orderId);
+      }
+      
+      setIsProcessing(false);
+      setIsSuccess(true);
+      onComplete();
+    } catch (error: any) {
+      setPaymentError(`UPI_SYNC_ERROR: ${error.message}`);
+      setIsProcessing(false);
+    }
+  };
 
   const handleProceed = async () => {
     if (step === 1) {
@@ -161,10 +271,34 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
       setStep(step + 1);
     } else {
       setPaymentError('');
+
+      if (!user) {
+        setPaymentError('AUTH_REQUIRED // SYNCHRONIZING_TERMINAL');
+        onLoginToggle();
+        return;
+      }
+
+      setIsProcessing(true);
+
+      if (paymentMethod === 'SCAN_PAY') {
+        if (!utrNumber || utrNumber.trim().length !== 12 || !/^\d+$/.test(utrNumber)) {
+          setUtrError('INVALID_UTR_SEQUENCE // MUST_BE_12_DIGITS');
+          setIsProcessing(false);
+          return;
+        }
+        setUtrError('');
+        await performScanPayPayment(utrNumber);
+        return;
+      }
+
+      if (useDemoPayment) {
+        await performMockPayment();
+        return;
+      }
+
       // IDENTITY VERIFICATION CHECKPOINT
       if (typeof (window as any).Razorpay === 'undefined') {
         setProcessState('GATEWAY_SYNC_PENDING // PLEASE_WAIT');
-        setIsProcessing(true);
         
         let attempts = 0;
         const checkScript = setInterval(() => {
@@ -183,14 +317,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         return;
       }
 
-      if (!user) {
-        setPaymentError('AUTH_REQUIRED // SYNCHRONIZING_TERMINAL');
-        onLoginToggle();
-        return;
-      }
-
       // Razorpay Integration
-      setIsProcessing(true);
       try {
         const razorpayKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID;
 
@@ -212,15 +339,17 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         const contentType = orderRes.headers.get("content-type");
         if (!orderRes.ok) {
           let errorMsg = 'ORDER_PROTOCOL_FAILURE';
+          let hintMessage = '';
           if (contentType && contentType.includes("application/json")) {
             const errorData = await orderRes.json();
             errorMsg = errorData.error || errorMsg;
+            hintMessage = errorData.hint ? ` // ${errorData.hint}` : '';
           } else {
             const text = await orderRes.text();
             console.error("Non-JSON Error Response:", text);
-            errorMsg = `SERVER_ERROR (${orderRes.status}): ${text.substring(0, 50)}...`;
+            errorMsg = `SERVER_ERROR (${orderRes.status})`;
           }
-          throw new Error(errorMsg);
+          throw new Error(`${errorMsg}${hintMessage}`);
         }
         
         if (!contentType || !contentType.includes("application/json")) {
@@ -247,6 +376,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
           },
           handler: async function (response: any) {
             setProcessState('PAYMENT_VERIFIED // DISPATCHING_RECEIPT');
+            setPaymentError('');
             
             try {
               // Server-side verification
@@ -603,33 +733,160 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                   <h2 id="payment-heading" className="text-xs font-black uppercase tracking-widest text-ink">Secure Gateway Authorization</h2>
                 </div>
 
-                <div className="p-8 bg-surface border border-white/5 space-y-6">
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent">Summary manifest</span>
-                    <p className="text-xs font-mono text-muted uppercase leading-relaxed">
-                      You are about to initiate a secure acquisition transfer of <span className="text-white">₹{total}</span> to P-THREAD.
-                      All transactions are protected via 256-bit AES encryption.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/5">
-                    <div className="space-y-1">
-                      <span className="text-[8px] font-black uppercase text-muted tracking-widest">Dispatch Sector</span>
-                      <p className="text-[10px] font-mono text-white uppercase">{formData.country} // {formData.city}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[8px] font-black uppercase text-muted tracking-widest">Acquirer Identity</span>
-                      <p className="text-[10px] font-mono text-white uppercase">{formData.firstName} {formData.lastName}</p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-accent/5 border border-accent/20 flex items-start gap-4">
-                    <ShieldCheck className="w-5 h-5 text-accent shrink-0" />
-                    <p className="text-[9px] font-mono text-muted uppercase leading-relaxed">
-                      BY PROCEEDING, YOU AUTHORIZE THE LOGISTICS SYNC AND ARCHIVE ALLOCATION PROTOCOLS.
-                    </p>
-                  </div>
+                {/* Payment Method Tabs */}
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('GATEWAY');
+                      setPaymentError('');
+                    }}
+                    className={`p-5 border text-[10px] font-black uppercase tracking-[0.2em] transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-3 cursor-pointer ${
+                      paymentMethod === 'GATEWAY'
+                        ? 'bg-accent border-accent text-white shadow-[0_0_20px_rgba(230,30,30,0.15)] font-black'
+                        : 'bg-surface border-white/10 text-muted hover:border-white/20'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4 shrink-0" />
+                    <span>01 // ONLINE GATEWAY</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod('SCAN_PAY');
+                      setPaymentError('');
+                    }}
+                    className={`p-5 border text-[10px] font-black uppercase tracking-[0.2em] transition-all text-center flex flex-col sm:flex-row items-center justify-center gap-3 cursor-pointer ${
+                      paymentMethod === 'SCAN_PAY'
+                        ? 'bg-accent border-accent text-white shadow-[0_0_20px_rgba(230,30,30,0.15)] font-black'
+                        : 'bg-surface border-white/10 text-muted hover:border-white/20'
+                    }`}
+                  >
+                    <QrCode className="w-4 h-4 shrink-0" />
+                    <span>02 // UPI SCAN & PAY</span>
+                  </button>
                 </div>
+
+                {paymentMethod === 'GATEWAY' ? (
+                  <div className="p-8 bg-surface border border-white/5 space-y-6">
+                    {((import.meta as any).env.VITE_RAZORPAY_KEY_ID || '').startsWith('rzp_test_') && (
+                      <div className="p-4 bg-blue-500/10 border border-blue-500/20 mb-4">
+                        <p className="text-[10px] font-mono text-blue-400 uppercase leading-relaxed">
+                          <span className="text-white font-bold">[TEST_MODE_ACTIVE]</span> // Use Razorpay test cards (e.g., 4111...) for simulation. 
+                          If using international cards, ensure "International Payments" is enabled in your Razorpay Dashboard.
+                        </p>
+                      </div>
+                    )}
+
+                    {isKeyMissingOrPlaceholder && (
+                      <div className="p-6 bg-accent/10 border border-accent/20 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <Ticket className="w-4 h-4 text-accent" />
+                          <span className="text-[10px] font-black uppercase text-accent tracking-widest">Gateway Configuration Missing</span>
+                        </div>
+                        <p className="text-[10px] font-mono text-muted uppercase leading-relaxed">
+                          To enable real payments, go to <span className="text-white">Settings &gt; API Keys</span> and set <span className="text-accent underline">VITE_RAZORPAY_KEY_ID</span>.
+                        </p>
+                        <button
+                          onClick={() => setUseDemoPayment(!useDemoPayment)}
+                          className={`w-full p-4 border text-[10px] font-black uppercase tracking-[0.2em] transition-all ${useDemoPayment ? 'bg-accent border-accent text-white' : 'bg-surface border-white/10 text-muted'}`}
+                        >
+                          {useDemoPayment ? '[DEMO_MODE_ACTIVE]' : 'ACTIVATE_DEMO_BYPASS'}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent">Summary manifest</span>
+                      <p className="text-xs font-mono text-muted uppercase leading-relaxed">
+                        You are about to initiate a secure acquisition transfer of <span className="text-white">₹{total}</span> to P-THREAD.
+                        {useDemoPayment ? ' [SIMULATED_TRANSACTION]' : ' All transactions are protected via 256-bit AES encryption.'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase text-muted tracking-widest">Dispatch Sector</span>
+                        <p className="text-[10px] font-mono text-white uppercase">{formData.country} // {formData.city}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase text-muted tracking-widest">Acquirer Identity</span>
+                        <p className="text-[10px] font-mono text-white uppercase">{formData.firstName} {formData.lastName}</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-accent/5 border border-accent/20 flex items-start gap-4">
+                      <ShieldCheck className="w-5 h-5 text-accent shrink-0" />
+                      <p className="text-[9px] font-mono text-muted uppercase leading-relaxed">
+                        BY PROCEEDING, YOU AUTHORIZE THE LOGISTICS SYNC AND ARCHIVE ALLOCATION PROTOCOLS.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 bg-surface border border-white/5 space-y-6">
+                    <div className="text-center space-y-4">
+                      <span className="text-[10px] font-black uppercase tracking-[0.4em] text-accent block">UPI Scan to Authorize Transfer</span>
+                      
+                      {/* Beautiful QR Code Scanner styling */}
+                      <div className="relative w-48 h-48 mx-auto bg-[#050505] border border-white/10 p-2 overflow-hidden flex items-center justify-center group shadow-[0_0_30px_rgba(230,30,30,0.08)]">
+                        {/* Scanning Line anim */}
+                        <motion.div 
+                          className="absolute left-0 right-0 h-[2px] bg-accent opacity-75 z-20"
+                          animate={{ top: ['0%', '100%', '0%'] }}
+                          transition={{ repeat: Infinity, duration: 2.2, ease: 'linear' }}
+                        />
+                        {/* Direct high-res Google Drive embed */}
+                        <img 
+                          src="https://lh3.googleusercontent.com/d/1TidFSxIwpLyajqVVx45N66qmsdvCVXMz" 
+                          alt="UPI scan and pay routing manifest to secure gateway"
+                          className="w-full h-full object-contain relative z-10"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 border-2 border-accent/15 pointer-events-none group-hover:border-accent/30 transition-colors" />
+                      </div>
+
+                      <div className="space-y-2 mt-4 max-w-md mx-auto">
+                        <span className="text-[10px] font-mono text-accent uppercase block">[TRANSACTION_MATRIX_TOTAL: ₹{total}]</span>
+                        <p className="text-[10px] font-mono text-muted uppercase leading-relaxed">
+                          Scan the QR above using your preferred UPI provider (GPay, PhonePe, Paytm, BHIM). Ensure the amount is exactly <span className="text-white">₹{total}</span>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 border-t border-white/5 pt-6">
+                      <div className="space-y-2">
+                        <label htmlFor="utr" className="text-[9px] font-black uppercase text-muted tracking-[0.2em] block flex justify-between">
+                          <span>Verification Sequence ID (12-Digit UTR Number)</span>
+                          <span className="text-accent font-bold">[AUT_SIG_REQD]</span>
+                        </label>
+                        <input
+                          id="utr"
+                          type="text"
+                          maxLength={12}
+                          value={utrNumber}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setUtrNumber(val);
+                            if (val.length === 12) setUtrError('');
+                          }}
+                          placeholder="E.G. 123456789012"
+                          className={`w-full bg-bg border ${utrError ? 'border-accent' : 'border-white/10'} p-4 text-xs font-mono font-bold tracking-[0.4em] text-center focus:border-accent outline-none uppercase placeholder:text-muted/30`}
+                          required
+                        />
+                        {utrError && (
+                          <p className="text-[9px] font-mono text-accent italic uppercase">{utrError}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase text-muted tracking-widest block">Important Clearance Policy</span>
+                        <p className="text-[9px] font-mono text-muted uppercase leading-relaxed">
+                          The transaction will be verified sequentially by our clearing network. Delivery logistics will update dynamically upon clearance.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -817,13 +1074,16 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
               <span>-₹{appliedDiscount}</span>
             </div>
           )}
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-muted">
-            <span>Shipping Matrix</span>
-            <span>{shipping > 0 ? `₹${shipping}` : 'FREE'}</span>
+          <div className="flex justify-between items-start text-[10px] font-black uppercase tracking-widest text-muted">
+            <div className="flex flex-col">
+              <span>Shipping Matrix</span>
+              <span className="text-[8px] text-accent/50 font-mono tracking-normal leading-tight mt-1">{formData.country.toUpperCase()} // {shippingLabel}</span>
+            </div>
+            <span>{shipping > 0 ? `₹${shipping}` : 'ALLOCATED'}</span>
           </div>
-          <div className="flex justify-between items-center text-xl font-black uppercase tracking-tighter text-ink pt-4">
+          <div className="flex justify-between items-center text-xl font-black uppercase tracking-tighter text-ink pt-4 border-t border-white/5">
             <span>Critical Total</span>
-            <span className="text-accent">₹{total}</span>
+            <span className="text-accent italic">₹{total}</span>
           </div>
         </div>
 

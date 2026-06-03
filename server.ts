@@ -687,7 +687,8 @@ async function startServer() {
       const options = {
         amount: Math.round(amount * 100), // in paise
         currency: 'INR',
-        receipt: `receipt_${Date.now()}`
+        receipt: `receipt_${Date.now()}`,
+        payment_capture: 1 // Auto capture
       };
       
       console.log('RAZORPAY_GATEWAY_INIT // Options:', JSON.stringify(options));
@@ -699,10 +700,15 @@ async function startServer() {
       
       // Detailed error analysis
       let errorMsg = 'ORDER_CREATION_FAILURE';
+      let hint = 'Ensure VITE_RAZORPAY_KEY_ID matches RAZORPAY_KEY_ID and Secret is correct.';
+      
       if (err.error) {
         errorMsg = err.error.description || err.error.code || errorMsg;
         if (err.error.description === 'Authentication failed') {
-          errorMsg = 'RAZORPAY_AUTH_FAILED // Check Key ID and Secret in Settings';
+          errorMsg = 'RAZORPAY_AUTH_FAILED // Check API Keys';
+          hint = 'The Key ID or Secret provided is invalid for this project.';
+        } else if (err.error.description?.includes('International')) {
+          hint = 'International payments must be manually enabled in your Razorpay Dashboard (Settings > Payment Methods).';
         }
       } else if (err.message) {
         errorMsg = err.message;
@@ -711,7 +717,7 @@ async function startServer() {
       res.status(500).json({ 
         error: errorMsg,
         details: err.error || null,
-        hint: 'Ensure VITE_RAZORPAY_KEY_ID matches RAZORPAY_KEY_ID and Secret is correct.'
+        hint
       });
     }
   });
