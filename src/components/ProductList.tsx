@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Product } from '../types';
 import ProductCard from './ProductCard';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
@@ -171,30 +171,50 @@ export default function ProductList({
         } 
         id="product-grid"
       >
-        {filteredProducts.length > 0 ? (
-          filteredProducts.map((product, index) => (
-            <div key={product.id} id={index === 0 ? 'primary-data-node' : undefined} className={variant === 'poster' ? 'max-w-4xl mx-auto w-full' : ''}>
-              <ProductCard 
-                product={product} 
-                onAddToCart={onAddToCart}
-                onWishlistToggle={onWishlistToggle}
-                isWishlisted={wishlist.includes(product.id)}
-                onViewDetails={onViewDetails}
-                variant={variant}
-                accentColor={accentColor}
-              />
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full py-32 flex flex-col items-center justify-center text-center">
-            <div className="w-24 h-24 border border-white/5 flex items-center justify-center mb-8">
-              <X className="w-12 h-12 text-muted opacity-20" />
-            </div>
-            <p className="text-sm uppercase font-black tracking-[0.4em] text-muted">
-              Null result // No matches found in archive
-            </p>
-          </div>
-        )}
+        <AnimatePresence mode="popLayout">
+          {filteredProducts.length > 0 ? (
+            filteredProducts.map((product, index) => (
+              <motion.div 
+                layout
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ 
+                  duration: 0.4, 
+                  ease: [0.16, 1, 0.3, 1],
+                  layout: { duration: 0.4, type: "spring", stiffness: 150, damping: 20 }
+                }}
+                key={product.id} 
+                id={index === 0 ? 'primary-data-node' : undefined} 
+                className={variant === 'poster' ? 'max-w-4xl mx-auto w-full' : ''}
+              >
+                <ProductCard 
+                  product={product} 
+                  onAddToCart={onAddToCart}
+                  onWishlistToggle={onWishlistToggle}
+                  isWishlisted={wishlist.includes(product.id)}
+                  onViewDetails={onViewDetails}
+                  variant={variant}
+                  accentColor={accentColor}
+                />
+              </motion.div>
+            ))
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="col-span-full py-32 flex flex-col items-center justify-center text-center w-full"
+            >
+              <div className="w-24 h-24 border border-white/5 flex items-center justify-center mb-8">
+                <X className="w-12 h-12 text-muted opacity-20" />
+              </div>
+              <p className="text-sm uppercase font-black tracking-[0.4em] text-muted">
+                Null result // No matches found in archive
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </section>
   );
