@@ -40,13 +40,45 @@ export default function OrderHistory({ isOpen, onClose, uid }: OrderHistoryProps
     if (isOpen && uid) {
       setLoading(true);
       fetch(`/api/orders?uid=${uid}`)
-        .then(resp => resp.json())
+        .then(resp => {
+          if (!resp.ok) {
+            throw new Error(`API_STATUS_${resp.status}`);
+          }
+          return resp.json();
+        })
         .then(data => {
-          setOrders(Array.isArray(data) ? data : []);
+          const backendOrders = Array.isArray(data) ? data : [];
+          const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+          const matchingLocal = localOrders.filter((o: any) => o.uid === uid || o.userId === uid);
+          
+          const combined = [...backendOrders];
+          matchingLocal.forEach((lo: any) => {
+            if (!combined.some(co => co.id === lo.id)) {
+              combined.push(lo);
+            }
+          });
+
+          combined.sort((a: any, b: any) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+            const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+
+          setOrders(combined);
           setLoading(false);
         })
         .catch(err => {
-          console.error("Order fetch failure:", err);
+          console.warn("Order fetch failure, using local backup simulation:", err);
+          const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+          const matchingLocal = localOrders.filter((o: any) => o.uid === uid || o.userId === uid);
+          
+          matchingLocal.sort((a: any, b: any) => {
+            const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+            const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          
+          setOrders(matchingLocal);
           setLoading(false);
         });
     }
