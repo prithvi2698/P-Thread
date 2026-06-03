@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database, RefreshCcw, Edit2, Check } from 'lucide-react';
 import { PRODUCTS } from '../constants';
+import { db } from '../lib/firebase';
+import { doc, setDoc, deleteDoc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
 
 interface OrderItem {
   name: string;
@@ -47,17 +49,78 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
 
   const fetchOrders = async () => {
     setLoading(true);
+    let apiOrders: Order[] = [];
     try {
       const resp = await fetch('/api/admin/orders', {
         headers: { 'x-admin-email': adminEmail }
       });
-      const data = await resp.json();
-      setOrders(Array.isArray(data) ? data : []);
+      if (resp.ok) {
+        const data = await resp.json();
+        apiOrders = Array.isArray(data) ? data : [];
+      }
     } catch (err) {
-      console.error("Admin Order Fetch Failure:", err);
-    } finally {
-      setLoading(false);
+      console.warn("REST API Admin Order Fetch Failure (using firestore/local fallback):", err);
     }
+
+    // Load from Firestore
+    let firestoreOrders: Order[] = [];
+    try {
+      const q = collection(db, 'orders');
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        firestoreOrders.push({
+          id: docSnap.id,
+          user_email: data.email || data.user_email || 'SANDBOX_ANONYMOUS',
+          total: Number(data.total || 0),
+          status: data.status || 'PENDING',
+          created_at: data.createdAt?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
+          items: (data.items || []).map((item: any) => ({
+            name: item.name,
+            color: item.color || item.selectedColor || 'DEFAULT',
+            size: item.size || item.selectedSize || 'DEFAULT',
+            quantity: Number(item.quantity || 1),
+            price: Number(item.price || 0)
+          }))
+        });
+      });
+    } catch (fsErr) {
+      console.warn("Firestore Admin Order query skipped or failed:", fsErr);
+    }
+
+    // Load from localStorage
+    let fallbackOrders: Order[] = [];
+    try {
+      const local = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      fallbackOrders = local.map((o: any) => ({
+        id: o.id,
+        user_email: o.email || o.user_email || 'SANDBOX_ANONYMOUS',
+        total: Number(o.total || 0),
+        status: o.status || 'PENDING',
+        created_at: o.created_at || o.createdAt || new Date().toISOString(),
+        items: (o.items || []).map((item: any) => ({
+          name: item.name,
+          color: item.color || item.selectedColor || 'DEFAULT',
+          size: item.size || item.selectedSize || 'DEFAULT',
+          quantity: Number(item.quantity || 1),
+          price: Number(item.price || 0)
+        }))
+      }));
+    } catch (lsErr) {
+      console.warn("Local storage parse failed:", lsErr);
+    }
+
+    // Merge everything by ID, keeping highest precedence: API > Firestore > Fallback
+    const ordersMap = new Map<string, Order>();
+    fallbackOrders.forEach(o => ordersMap.set(o.id.toLowerCase(), o));
+    firestoreOrders.forEach(o => ordersMap.set(o.id.toLowerCase(), o));
+    apiOrders.forEach(o => ordersMap.set(o.id.toLowerCase(), o));
+
+    const combined = Array.from(ordersMap.values());
+    combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setOrders(combined);
+    setLoading(false);
   };
 
   const fetchInventory = async () => {
@@ -82,7 +145,11 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   }, [isOpen, activeTab]);
 
   const updateStatus = async (orderId: string, newStatus: string) => {
+    // 1. Update UI state immediately for responsive feedback
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+
     try {
+      // 2. Sync to API backend if online
       await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 
@@ -91,9 +158,34 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
         },
         body: JSON.stringify({ status: newStatus })
       });
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     } catch (err) {
-      console.error("Status Update failure:", err);
+      console.warn("API direct status update skipped/failed:", err);
+    }
+
+    // 3. Update localStorage fallback state
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const updated = localOrders.map((o: any) => {
+        if (o.id === orderId) {
+          return { ...o, status: newStatus };
+        }
+        return o;
+      });
+      localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+    } catch (lsErr) {
+      console.error("Local storage status update error:", lsErr);
+    }
+
+    // 4. Update Firestore directly as Admin
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await setDoc(orderRef, {
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      console.log(`Firestore status updated to ${newStatus} for ID: ${orderId}`);
+    } catch (firestoreErr) {
+      console.warn("Firestore direct status sync skipped/failed:", firestoreErr);
     }
   };
 
@@ -102,21 +194,56 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
       setEditingOrderId(null);
       return;
     }
+
+    const newId = newOrderIdInput.trim();
+
     try {
-      const resp = await fetch(`/api/admin/orders/${oldId}/update-id`, {
+      // 1. Try hitting the API backend
+      await fetch(`/api/admin/orders/${oldId}/update-id`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
           'x-admin-email': adminEmail
         },
-        body: JSON.stringify({ newId: newOrderIdInput })
+        body: JSON.stringify({ newId })
       });
-      if (resp.ok) {
-        setOrders(prev => prev.map(o => o.id === oldId ? { ...o, id: newOrderIdInput } : o));
-        setEditingOrderId(null);
-      }
     } catch (err) {
-      console.error("ID Update failure:", err);
+      console.warn("API update order ID skipped/failed:", err);
+    }
+
+    // Always keep state, localStorage, and Firestore synchronized
+    setOrders(prev => prev.map(o => o.id === oldId ? { ...o, id: newId } : o));
+    setEditingOrderId(null);
+
+    // Update Local Storage
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const updated = localOrders.map((o: any) => {
+        if (o.id === oldId) {
+          return { ...o, id: newId };
+        }
+        return o;
+      });
+      localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+    } catch (lsErr) {
+      console.error("Local storage ID update error:", lsErr);
+    }
+
+    // Update Firestore (clone document with new ID and delete old document)
+    try {
+      const oldRef = doc(db, 'orders', oldId);
+      const newRef = doc(db, 'orders', newId);
+      const snap = await getDoc(oldRef);
+      if (snap.exists()) {
+        await setDoc(newRef, {
+          ...snap.data(),
+          updatedAt: serverTimestamp()
+        });
+        await deleteDoc(oldRef);
+        console.log(`Firestore document clone successful from '${oldId}' to '${newId}'`);
+      }
+    } catch (firestoreErr) {
+      console.warn("Firestore document ID migration skipped/failed:", firestoreErr);
     }
   };
 
