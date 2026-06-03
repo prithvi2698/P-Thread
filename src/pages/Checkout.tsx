@@ -873,11 +873,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                           animate={{ top: ['0%', '100%', '0%'] }}
                           transition={{ repeat: Infinity, duration: 2.2, ease: 'linear' }}
                         />
-                        {/* Direct high-res Google Drive embed */}
+                        {/* Direct high-res dynamic UPI QR Code */}
                         <img 
-                          src="https://lh3.googleusercontent.com/d/1TidFSxIwpLyajqVVx45N66qmsdvCVXMz" 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=p-thread@axisbank&pn=p-thread&am=${total}&cu=INR`)}`}
                           alt="UPI scan and pay routing manifest to secure gateway"
-                          className="w-full h-full object-contain relative z-10 group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-contain relative z-10 group-hover:scale-105 transition-transform duration-300 bg-white p-1.5"
                           referrerPolicy="no-referrer"
                         />
                         <div className="absolute inset-x-0 bottom-0 bg-black/80 py-2.5 z-30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 border-t border-accent/25">
@@ -1204,11 +1204,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
                   />
 
-                  {/* High Resolution UPI QR Code */}
+                  {/* High Resolution dynamic UPI QR Code */}
                   <img 
-                    src="https://lh3.googleusercontent.com/d/1TidFSxIwpLyajqVVx45N66qmsdvCVXMz" 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=p-thread@axisbank&pn=p-thread&am=${total}&cu=INR`)}`}
                     alt="P-THREAD UPI Scan Target Manifest"
-                    className="w-full h-full object-contain relative z-10 filter contrast-125 saturate-150"
+                    className="w-full h-full object-contain relative z-10 filter contrast-125 bg-white p-2.5"
                     referrerPolicy="no-referrer"
                   />
                 </div>
