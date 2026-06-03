@@ -276,9 +276,19 @@ async function startServer() {
       const orders = sqliteDb.prepare('SELECT * FROM orders WHERE uid = ? ORDER BY created_at DESC').all(uid);
       const ordersWithItems = orders.map((order: any) => {
         const items = sqliteDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+        let tags: string[] = [];
+        if (order.labels) {
+          try {
+            tags = JSON.parse(order.labels);
+          } catch {
+            tags = [order.labels];
+          }
+        }
         return {
           ...order,
           items,
+          labels: tags,
+          notes: order.notes || '',
           created_at: order.created_at
         };
       });
@@ -449,9 +459,19 @@ async function startServer() {
       const orders = sqliteDb.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
       const ordersWithItems = orders.map((order: any) => {
         const items = sqliteDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+        let tags: string[] = [];
+        if (order.labels) {
+          try {
+            tags = JSON.parse(order.labels);
+          } catch {
+            tags = [order.labels];
+          }
+        }
         return {
           ...order,
           items,
+          labels: tags,
+          notes: order.notes || '',
           user_email: order.email,
           created_at: order.created_at
         };
@@ -589,16 +609,21 @@ async function startServer() {
 
   app.patch('/api/admin/orders/:id', async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, notes, labels } = req.body;
     const email = req.headers['x-admin-email'] as string;
     if (!ADMIN_EMAILS.includes(email)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
 
     try {
+      const updateData: any = {};
+      if (status !== undefined) updateData.status = status;
+      if (notes !== undefined) updateData.notes = notes;
+      if (labels !== undefined) updateData.labels = labels;
+
       let firestoreUpdated = false;
       if (firestore && context.isFirestoreEnabled) {
         try {
           await firestore.collection('orders').doc(id).update({
-            status,
+            ...updateData,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
           firestoreUpdated = true;
@@ -608,12 +633,143 @@ async function startServer() {
       }
 
       // Always update SQL if it exists
-      sqliteDb.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+      const fieldsToUpdate: string[] = [];
+      const values: any[] = [];
+      if (status !== undefined) {
+        fieldsToUpdate.push('status = ?');
+        values.push(status);
+      }
+      if (notes !== undefined) {
+        fieldsToUpdate.push('notes = ?');
+        values.push(notes);
+      }
+      if (labels !== undefined) {
+        fieldsToUpdate.push('labels = ?');
+        values.push(Array.isArray(labels) ? JSON.stringify(labels) : labels);
+      }
+
+      if (fieldsToUpdate.length > 0) {
+        values.push(id);
+        const sqlQuery = `UPDATE orders SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+        sqliteDb.prepare(sqlQuery).run(...values);
+      }
       
       res.json({ success: true, firestoreUpdated });
     } catch (err) {
       console.error('ORDER_UPDATE_FAILURE:', err);
       res.status(500).json({ error: 'ORDER_UPDATE_FAILURE' });
+    }
+  });
+
+  app.delete('/api/admin/orders/:id', async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const emailHeader = req.headers['x-admin-email'] as string;
+    if (!ADMIN_EMAILS.includes(emailHeader)) return res.status(403).json({ error: 'UNAUTHORIZED_ACCESS' });
+
+    try {
+      // 1. Get the order information first before we delete it so we can email the user.
+      let order: any = null;
+      if (firestore && context.isFirestoreEnabled) {
+        try {
+          const doc = await firestore.collection('orders').doc(id).get();
+          if (doc.exists) {
+            order = { id: doc.id, ...doc.data() };
+          }
+        } catch (fErr) {
+          console.error('FIRESTORE_GET_ORDER_BEFORE_DELETE_FAILED:', fErr);
+        }
+      }
+
+      if (!order) {
+        try {
+          const row = sqliteDb.prepare('SELECT * FROM orders WHERE id = ?').get(id) as any;
+          if (row) {
+            order = { ...row };
+          }
+        } catch (sErr) {
+          console.error('SQLITE_GET_ORDER_BEFORE_DELETE_FAILED:', sErr);
+        }
+      }
+
+      if (!order) {
+        return res.status(404).json({ error: 'ORDER_NOT_FOUND' });
+      }
+
+      const targetEmail = order.email || order.user_email || order.uid?.email;
+      const paymentId = order.paymentId || order.payment_id || 'DEMO_MOCK_ALLOCATION';
+
+      // 2. Dispatch cancellation email to customer (non-blocking / error-safe)
+      let emailStatus = { sent: false, error: null as any, skipped: false };
+      if (targetEmail) {
+        try {
+          const resend = getResendClient();
+          const { error } = await resend.emails.send({
+            from: 'P-THREAD <onboarding@resend.dev>',
+            to: [targetEmail],
+            subject: 'ARCHIVE_VOIDED // Acquisition Cancellation Protocol',
+            html: `
+              <div style="font-family: monospace; background: #000; color: #fff; padding: 40px; border: 1px solid #e61e1e;">
+                <p style="color: #e61e1e; font-size: 10px; margin-bottom: 20px;">[CANCELLATION_PROTOCOL_ACTIVE]</p>
+                <h1 style="color: #e61e1e; font-size: 24px; border-bottom: 2px solid #e61e1e; padding-bottom: 10px;">P-THREAD // MANIFEST_VOIDED</h1>
+                <p style="font-size: 12px; color: #888;">Manifest_ID: ${id}</p>
+                
+                <div style="margin: 30px 0; background: #111; padding: 20px; border-left: 2px solid #e61e1e;">
+                  <strong style="color: #fff; text-transform: uppercase; font-size: 10px;">Reason / Terminal Note:</strong>
+                  <p style="color: #ff4a4a; font-size: 13px; margin-top: 10px; text-transform: uppercase; font-weight: bold; line-height: 1.6;">${reason || 'NO_SPECIFIC_REASON_SPECIFIED_BY_OPERATOR'}</p>
+                </div>
+
+                <p style="color: #888; font-size: 11px; line-height: 1.6;">
+                  The resources allocated for your acquisition have been returned to the mainframe inventory. Any pending financial holds/payments (Payment ID: ${paymentId}) will be resolved automatically according to standard clearance processes.
+                </p>
+
+                <p style="margin-top: 40px; font-size: 10px; color: #444; line-height: 1.6;">
+                  If you believe this was in error, please initiate a new transaction or contact our operations room.
+                </p>
+              </div>
+            `,
+          });
+
+          if (error) {
+            console.warn('CANCELLATION_EMAIL_DISPATCH_FAILED:', error);
+            emailStatus.error = error.message || error;
+          } else {
+            console.log(`CANCELLATION_EMAIL_DISPATCHED // ID: ${id}`);
+            emailStatus.sent = true;
+          }
+        } catch (mailErr: any) {
+          console.warn('RESEND_NOT_CONFIGURED_OR_FAILED // CANCELLATION_EMAIL_SKIPPED', mailErr);
+          emailStatus.skipped = true;
+          emailStatus.error = mailErr.message || String(mailErr);
+        }
+      } else {
+        emailStatus.skipped = true;
+        emailStatus.error = 'No email address registered for this order.';
+      }
+
+      // 3. Delete from Firestore if exists
+      if (firestore && context.isFirestoreEnabled) {
+        try {
+          await firestore.collection('orders').doc(id).delete();
+        } catch (fErr) {
+          console.error('FIRESTORE_DELETE_ORDER_FAILED:', fErr);
+        }
+      }
+
+      // 4. Delete from SQLite
+      try {
+        sqliteDb.transaction(() => {
+          sqliteDb.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+          sqliteDb.prepare('DELETE FROM orders WHERE id = ?').run(id);
+        })();
+      } catch (sErr) {
+        console.error('SQLITE_DELETE_ORDER_FAILED:', sErr);
+      }
+
+      res.json({ success: true, id, emailStatus });
+    } catch (err: any) {
+      console.error('DELETE_ORDER_HANDLER_FAILURE:', err);
+      res.status(500).json({ error: 'DELETE_ORDER_FAILED', details: err.message });
     }
   });
 
@@ -817,6 +973,7 @@ async function startServer() {
       }
 
       // 3. EMAIL RECEIPT (TERTIARY - NON-BLOCKING)
+      let emailStatus = { sent: false, error: null as any, skipped: false };
       try {
         const resend = getResendClient();
         const { error } = await resend.emails.send({
@@ -863,15 +1020,19 @@ async function startServer() {
 
         if (error) {
           console.warn('EMAIL_DISPATCH_FAILED // SILENT:', error);
+          emailStatus.error = error.message || error;
         } else {
           console.log(`EMAIL_DISPATCHED // ID: ${orderId}`);
+          emailStatus.sent = true;
         }
-      } catch (mailErr) {
-        console.warn('RESEND_NOT_CONFIGURED // EMAIL_SKIPPED');
+      } catch (mailErr: any) {
+        console.warn('RESEND_NOT_CONFIGURED // EMAIL_SKIPPED', mailErr);
+        emailStatus.skipped = true;
+        emailStatus.error = mailErr.message || String(mailErr);
       }
 
       // 4. RESPONSE SUCCESS
-      res.status(200).json({ success: true, orderId });
+      res.status(200).json({ success: true, orderId, emailStatus });
     } catch (err: any) {
       console.error('SERVER_ORDER_HANDLER_FAILURE:', err);
       res.status(500).json({ 

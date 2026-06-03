@@ -84,6 +84,7 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [lookupLoading, setLookupLoading] = useState(false);
   const [copiedOrderId, setCopiedOrderId] = useState(false);
   const [activeSimulationStatus, setActiveSimulationStatus] = useState<'PENDING' | 'PENDING_DISPATCH' | 'SHIPPED' | 'DELIVERED'>('PENDING_DISPATCH');
+  const [resendEmailStatus, setResendEmailStatus] = useState<{ sent: boolean; error: string | null; skipped: boolean } | null>(null);
 
   const copyUPIAddress = () => {
     navigator.clipboard.writeText(upiAddress);
@@ -308,6 +309,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
         if (receiptData.orderId) {
           orderId = receiptData.orderId;
         }
+        if (receiptData.emailStatus) {
+          setResendEmailStatus(receiptData.emailStatus);
+        } else {
+          setResendEmailStatus({ sent: true, error: null, skipped: false });
+        }
       } else {
         console.warn(`SERVER_RECEIPT_API_NON_OK (${receiptRes.status}) // ENGAGING_CLIENT_SIDE_COVENANTS`);
       }
@@ -318,6 +324,11 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
     // 2. If backend failed or wasn't reachable, execute elegant direct client-side fallback write
     if (!orderId) {
       orderId = `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      setResendEmailStatus({
+        sent: false,
+        error: 'Backend API is unreachable. Offline simulator engaged.',
+        skipped: true
+      });
       
       // A. Write to client-side localStorage fallback for immediate retrieval
       try {
@@ -672,6 +683,52 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
                     {copiedOrderId ? '[ COPIED_ID ]' : '[ COPY ID ]'}
                   </button>
                 </div>
+              </div>
+
+              {/* Automated Resend Confirmation Dispatch Info */}
+              <div className="bg-black/30 p-4 border border-white/5 space-y-2 relative overflow-hidden">
+                <div className="flex justify-between items-center border-b border-white/5 pb-1.5 mb-1.5">
+                  <span className="text-[9px] font-black text-accent uppercase tracking-[0.2em]">
+                    [ RESEND_EMAIL_NOTIFICATION ]
+                  </span>
+                  <span className={`text-[8px] font-mono font-black uppercase px-2 py-0.5 border ${
+                    resendEmailStatus?.sent ? 'text-green-400 border-green-500/20 bg-green-500/5' :
+                    resendEmailStatus?.skipped ? 'text-amber-400 border-amber-500/20 bg-amber-500/5' :
+                    resendEmailStatus?.error ? 'text-accent border-accent/20 bg-accent/5' :
+                    'text-muted border-white/5 animate-pulse'
+                  }`}>
+                    {resendEmailStatus ? (resendEmailStatus.sent ? 'DISPATCHED' : resendEmailStatus.skipped ? 'SIMULATED' : 'ERR_PROTOCOL') : 'CONNECTING_STREAM'}
+                  </span>
+                </div>
+                {resendEmailStatus ? (
+                  resendEmailStatus.sent ? (
+                    <p className="text-[10px] text-zinc-300 uppercase leading-relaxed font-mono">
+                      ● Resend automatic confirmation email has been successfully dispatched to <span className="font-bold text-accent select-all">{formData.email}</span>. Please verify your workspace inbox.
+                    </p>
+                  ) : resendEmailStatus.skipped ? (
+                    <div className="space-y-1 font-mono">
+                      <p className="text-[10px] text-amber-500 uppercase leading-normal">
+                        ▲ Notification email simulated: sandbox mode active.
+                      </p>
+                      <p className="text-[9px] text-[#888] leading-normal uppercase">
+                        Reason: {resendEmailStatus.error || 'RESEND_API_KEY environment variable is not defined.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 font-mono">
+                      <p className="text-[10px] text-accent uppercase leading-normal font-bold">
+                        ⚠ Transaction email dispatch error: {resendEmailStatus.error || 'UNKNOWN_ERROR'}
+                      </p>
+                      <p className="text-[9px] text-zinc-500 leading-normal uppercase">
+                        Confirm if RESEND_API_KEY is configured and verified in Resend Dashboard.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-[10px] text-muted uppercase tracking-widest animate-pulse font-mono">
+                    Securing secure socket to Resend dispatch gateway...
+                  </p>
+                )}
               </div>
 
               {/* Simulated Dispatch timeline */}

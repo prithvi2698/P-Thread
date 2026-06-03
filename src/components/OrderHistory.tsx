@@ -16,6 +16,8 @@ interface Order {
   status: string;
   created_at: string;
   items: OrderItem[];
+  notes?: string;
+  labels?: string[];
 }
 
 interface OrderHistoryProps {
@@ -166,6 +168,31 @@ export default function OrderHistory({ isOpen, onClose, uid }: OrderHistoryProps
                         <span className="text-[9px] font-black uppercase tracking-widest text-muted">Final Consolidation</span>
                         <span className="text-xl font-black tracking-tighter text-ink font-mono">₹{order.total}</span>
                       </div>
+
+                      {/* Operator Notes & Status Labels */}
+                      {((order.labels && order.labels.length > 0) || order.notes) && (
+                        <div className="space-y-3 pt-2">
+                          {order.labels && order.labels.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 animate-fade-in">
+                              {order.labels.map(lbl => (
+                                <span 
+                                  key={lbl} 
+                                  className="px-2 py-0.5 text-[7px] font-mono border border-accent/20 bg-accent/5 text-accent uppercase font-bold"
+                                >
+                                  {lbl}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {order.notes && (
+                            <div className="bg-bg/40 border border-white/5 p-3 font-mono text-[9px] text-muted leading-relaxed uppercase border-l-2 border-l-accent animate-fade-in">
+                              <strong className="text-ink block mb-1 text-[8px] font-black tracking-widest text-accent">[OPERATOR_COMMUNIQUÉ] //</strong>
+                              {order.notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

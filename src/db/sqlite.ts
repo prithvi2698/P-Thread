@@ -36,6 +36,8 @@ export function initializeSql() {
       shipping_amount REAL NOT NULL,
       payment_id TEXT,
       status TEXT DEFAULT 'PENDING',
+      notes TEXT DEFAULT '',
+      labels TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (uid) REFERENCES users(uid)
     )
@@ -105,9 +107,9 @@ export function initializeSql() {
     db.exec('ALTER TABLE products ADD COLUMN original_price REAL');
   }
 
-  // Migration: Add shipping and phone columns to orders if missing
+  // Migration: Add shipping and phone, notes, and labels columns to orders if missing
   const orderInfo = db.prepare("PRAGMA table_info(orders)").all() as any[];
-  const newCols = ['phone', 'address', 'city', 'postal_code', 'country'];
+  const newCols = ['phone', 'address', 'city', 'postal_code', 'country', 'notes', 'labels'];
   newCols.forEach(col => {
     if (!orderInfo.some(c => c.name === col)) {
       console.log(`MIGRATING_SQL_ARCHIVE // ADDING_${col.toUpperCase()}_COLUMN`);

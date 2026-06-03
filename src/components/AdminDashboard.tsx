@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database, RefreshCcw, Edit2, Check } from 'lucide-react';
+import { X, Package, Truck, CheckCircle, Clock, AlertCircle, Search, Filter, ShieldCheck, Database, RefreshCcw, Edit2, Check, Trash2, Tag } from 'lucide-react';
 import { PRODUCTS } from '../constants';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
@@ -20,6 +20,8 @@ interface Order {
   status: string;
   created_at: string;
   items: OrderItem[];
+  notes?: string;
+  labels?: string[];
 }
 
 interface AdminDashboardProps {
@@ -36,6 +38,89 @@ const STATUS_CONFIG: Record<string, { color: string, bg: string, icon: any }> = 
   'CANCELLED': { color: 'text-muted', bg: 'bg-white/5 border-white/10', icon: AlertCircle },
 };
 
+const ALL_AVAILABLE_LABELS = ['URGENT', 'VIP', 'FRAGILE', 'HOLD', 'CUSTOMER_VIP', 'RESTOCKED', 'EXPORT_CLEARANCE'];
+
+interface NotesControlProps {
+  orderId: string;
+  initialNotes: string;
+  onSave: (orderId: string, notes: string) => Promise<void>;
+}
+
+function NotesControl({ orderId, initialNotes, onSave }: NotesControlProps) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    setNotes(initialNotes);
+  }, [initialNotes]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await onSave(orderId, notes);
+    setIsSaving(false);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  return (
+    <div className="space-y-2">
+      <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Operator Notes</span>
+      <div className="flex gap-2">
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="ADD OPERATOR COMMUNIQUÉ..."
+          className="flex-1 bg-bg border border-white/10 p-2 text-[10px] font-mono focus:border-accent/40 outline-none uppercase resize-none h-[54px] rounded-none custom-scrollbar"
+        />
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className={`px-3 border text-[9px] font-black uppercase transition-all flex flex-col items-center justify-center gap-1 min-w-[64px] rounded-none ${
+            isSaved 
+              ? 'bg-green-500/10 border-green-500/30 text-green-400 font-bold' 
+              : 'border-white/10 text-muted hover:border-accent hover:text-white hover:bg-white/5 cursor-pointer'
+          }`}
+        >
+          {isSaving ? '...' : isSaved ? 'SAVED' : 'SAVE'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface LabelsControlProps {
+  orderId: string;
+  activeLabels: string[];
+  onToggle: (orderId: string, label: string) => void;
+}
+
+function LabelsControl({ orderId, activeLabels, onToggle }: LabelsControlProps) {
+  return (
+    <div className="space-y-2">
+      <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Sector Log Labels</span>
+      <div className="flex flex-wrap gap-1.5 h-[54px] content-start overflow-y-auto custom-scrollbar">
+        {ALL_AVAILABLE_LABELS.map(lbl => {
+          const isActive = activeLabels.includes(lbl);
+          return (
+            <button
+              key={lbl}
+              onClick={() => onToggle(orderId, lbl)}
+              className={`px-2 py-1 text-[8px] font-mono border transition-all cursor-pointer rounded-none select-none ${
+                isActive
+                  ? 'bg-accent/10 border-accent/40 text-accent font-black shadow-[0_0_10px_rgba(230,30,30,0.1)]'
+                  : 'bg-transparent border-white/5 text-muted hover:border-white/20 hover:text-white'
+              }`}
+            >
+              {isActive ? `● ${lbl}` : `○ ${lbl}`}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDashboardProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
@@ -46,6 +131,10 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [newOrderIdInput, setNewOrderIdInput] = useState('');
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [cancellationReason, setCancellationReason] = useState<string>('');
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -74,6 +163,8 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
           user_email: data.email || data.user_email || 'SANDBOX_ANONYMOUS',
           total: Number(data.total || 0),
           status: data.status || 'PENDING',
+          notes: data.notes || '',
+          labels: data.labels || [],
           created_at: data.createdAt?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
           items: (data.items || []).map((item: any) => ({
             name: item.name,
@@ -97,6 +188,8 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
         user_email: o.email || o.user_email || 'SANDBOX_ANONYMOUS',
         total: Number(o.total || 0),
         status: o.status || 'PENDING',
+        notes: o.notes || '',
+        labels: o.labels || [],
         created_at: o.created_at || o.createdAt || new Date().toISOString(),
         items: (o.items || []).map((item: any) => ({
           name: item.name,
@@ -264,6 +357,125 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
     } finally {
       setResendingId(null);
     }
+  };
+
+  const updateNotes = async (orderId: string, newNotes: string) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes: newNotes } : o));
+
+    try {
+      await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ notes: newNotes })
+      });
+    } catch (err) {
+      console.warn("API update notes failed:", err);
+    }
+
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const updated = localOrders.map((o: any) => o.id === orderId ? { ...o, notes: newNotes } : o);
+      localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+    } catch (lsErr) {
+      console.error(lsErr);
+    }
+
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await setDoc(orderRef, {
+        notes: newNotes,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn("Firestore update notes failed:", fsErr);
+    }
+  };
+
+  const toggleLabel = async (orderId: string, label: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const currentLabels = order.labels || [];
+    const newLabels = currentLabels.includes(label)
+      ? currentLabels.filter(l => l !== label)
+      : [...currentLabels, label];
+
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, labels: newLabels } : o));
+
+    try {
+      await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ labels: newLabels })
+      });
+    } catch (err) {
+      console.warn("API update labels failed:", err);
+    }
+
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const updated = localOrders.map((o: any) => o.id === orderId ? { ...o, labels: newLabels } : o);
+      localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+    } catch (lsErr) {
+      console.error(lsErr);
+    }
+
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await setDoc(orderRef, {
+        labels: newLabels,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn("Firestore update labels failed:", fsErr);
+    }
+  };
+
+  const deleteOrder = async () => {
+    if (!orderToDelete) return;
+    setIsDeleting(true);
+    const orderId = orderToDelete.id;
+
+    try {
+      await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail
+        },
+        body: JSON.stringify({ reason: cancellationReason || 'Order cancelled by administrator.' })
+      });
+    } catch (err) {
+      console.warn("API delete order failed: ", err);
+    }
+
+    setOrders(prev => prev.filter(o => o.id !== orderId));
+
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const updated = localOrders.filter((o: any) => o.id !== orderId);
+      localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+    } catch (lsErr) {
+      console.error("Local storage delete order failed:", lsErr);
+    }
+
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await deleteDoc(orderRef);
+      console.log(`Firestore document deleted: ${orderId}`);
+    } catch (fsErr) {
+      console.warn("Firestore direct delete order failed:", fsErr);
+    }
+
+    setIsDeleting(false);
+    setOrderToDelete(null);
+    setCancellationReason('');
   };
 
   const updateStock = async (productId: string, newStock: number) => {
@@ -531,6 +743,32 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
                               </div>
                             </div>
                           </div>
+
+                          <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                            <div className="md:col-span-5">
+                              <NotesControl 
+                                orderId={order.id} 
+                                initialNotes={order.notes || ''} 
+                                onSave={updateNotes} 
+                              />
+                            </div>
+                            <div className="md:col-span-4">
+                              <LabelsControl 
+                                orderId={order.id} 
+                                activeLabels={order.labels || []} 
+                                onToggle={toggleLabel} 
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <button
+                                onClick={() => setOrderToDelete(order)}
+                                className="w-full py-3 border border-red-500/20 text-[9px] font-black text-red-500 bg-red-500/5 hover:bg-red-500 hover:text-white hover:border-red-500 uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer h-[54px] rounded-none"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                REMOVE MANIFEST
+                              </button>
+                            </div>
+                          </div>
                         </motion.div>
                       );
                     })}
@@ -605,6 +843,80 @@ export default function AdminDashboard({ isOpen, onClose, adminEmail }: AdminDas
               <span>Grid_Protection: ENABLED</span>
             </div>
           </motion.div>
+
+          {/* Deletion / Voiding Overlay Prompt */}
+          <AnimatePresence>
+            {orderToDelete && (
+              <div className="fixed inset-0 z-[700] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setOrderToDelete(null)}
+                  className="absolute inset-0 bg-black/95 backdrop-blur-sm"
+                />
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="relative w-full max-w-lg bg-surface border border-red-500/30 p-8 shadow-2xl flex flex-col gap-6"
+                >
+                  <div className="flex items-center gap-4 border-b border-red-500/20 pb-4">
+                    <div className="w-10 h-10 bg-red-500/10 border border-red-500/40 flex items-center justify-center text-red-500 font-bold text-xs select-none animate-pulse">
+                      !
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black tracking-widest text-red-500 uppercase block">Terminal_Warning // Level_04</span>
+                      <h3 className="text-sm font-black uppercase text-white tracking-widest">Acquisition Revocation Protocol</h3>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-mono text-muted uppercase tracking-wider leading-relaxed">
+                      You are about to void manifest <strong className="text-red-400 font-black">{orderToDelete.id}</strong>. This operation will purge the record from the mainframe database.
+                    </p>
+                    <p className="text-[10px] font-mono text-muted uppercase tracking-wider leading-relaxed">
+                      A critical cancellation email will be dispatched to <strong className="text-white">{orderToDelete.user_email}</strong>. Please provide a clear termination record entry below describing the reason:
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Reason for Allocation Revocation</span>
+                    <textarea
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      placeholder="e.g. ITEM_OUT_OF_STOCK // ADDRESS_VERIFICATION_FAILURE"
+                      className="w-full bg-bg border border-red-500/20 p-3 text-[10px] font-mono focus:border-red-500 outline-none uppercase resize-none h-[80px] rounded-none text-red-400 custom-scrollbar placeholder:text-red-950/55"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setOrderToDelete(null)}
+                      className="flex-1 py-3 border border-white/5 text-[9px] font-black text-muted hover:border-white/20 hover:text-white uppercase tracking-widest transition-all cursor-pointer rounded-none"
+                    >
+                      ABORT PROTOCOL
+                    </button>
+                    <button
+                      onClick={deleteOrder}
+                      disabled={isDeleting}
+                      className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-[9px] font-black text-white uppercase tracking-widest transition-all cursor-pointer rounded-none flex items-center justify-center gap-2 font-bold"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          VOIDIND...
+                        </>
+                      ) : (
+                        'CONFIRM REVOCATION'
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </AnimatePresence>
