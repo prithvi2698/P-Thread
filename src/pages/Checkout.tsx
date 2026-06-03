@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { CartItem } from '../types';
 import { checkServiceability } from '../lib/logistics';
 import { auth, db } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 interface CheckoutProps {
   cart: CartItem[];
@@ -77,11 +77,117 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
   const [isEditingUpi, setIsEditingUpi] = useState(false);
   const [tempUpi, setTempUpi] = useState('p-thread@axisbank');
 
+  // Order Tracking and Simulation Ledger states
+  const [lookupId, setLookupId] = useState('');
+  const [lookupResult, setLookupResult] = useState<any>(null);
+  const [lookupError, setLookupError] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [copiedOrderId, setCopiedOrderId] = useState(false);
+  const [activeSimulationStatus, setActiveSimulationStatus] = useState<'PENDING' | 'PENDING_DISPATCH' | 'SHIPPED' | 'DELIVERED'>('PENDING_DISPATCH');
+
   const copyUPIAddress = () => {
     navigator.clipboard.writeText(upiAddress);
     setCopiedUPILink(true);
     setTimeout(() => setCopiedUPILink(false), 2000);
   };
+
+  const copyOrderId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedOrderId(true);
+    setTimeout(() => setCopiedOrderId(false), 2000);
+  };
+
+  const handleLookupOrder = async (searchId: string) => {
+    const idToSearch = searchId.trim();
+    if (!idToSearch) {
+      setLookupError('PLEASE_ENTER_VALID_MANIFEST_ID');
+      return;
+    }
+    
+    setLookupLoading(true);
+    setLookupError('');
+    setLookupResult(null);
+    
+    // 1. Try checking local storage first
+    try {
+      const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+      const foundLocal = localOrders.find((o: any) => o.id === idToSearch || o.id?.toLowerCase() === idToSearch.toLowerCase());
+      if (foundLocal) {
+        setLookupResult(foundLocal);
+        setLookupLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn("Local storage check failed:", e);
+    }
+    
+    // 2. Try checking Firestore
+    try {
+      const orderRef = doc(db, 'orders', idToSearch);
+      const snapshot = await getDoc(orderRef);
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setLookupResult({
+          id: idToSearch,
+          total: data.total,
+          shippingAmount: data.shippingAmount,
+          paymentId: data.paymentId,
+          status: data.status,
+          created_at: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          items: data.items || [],
+          email: data.email,
+          phone: data.phone,
+          shippingAddress: data.shippingAddress
+        });
+      } else {
+        setLookupError('MANIFEST_NOT_FOUND_IN_LEDGER');
+      }
+    } catch (firestoreErr: any) {
+      console.error('Firestore lookup failed:', firestoreErr);
+      setLookupError(`LOOKUP_ERROR: ${firestoreErr.message}`);
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const advanceOrderStatus = async () => {
+    let nextStatus: 'PENDING' | 'PENDING_DISPATCH' | 'SHIPPED' | 'DELIVERED' = 'PENDING_DISPATCH';
+    if (activeSimulationStatus === 'PENDING') nextStatus = 'PENDING_DISPATCH';
+    else if (activeSimulationStatus === 'PENDING_DISPATCH') nextStatus = 'SHIPPED';
+    else if (activeSimulationStatus === 'SHIPPED') nextStatus = 'DELIVERED';
+    else if (activeSimulationStatus === 'DELIVERED') nextStatus = 'PENDING_DISPATCH'; // reset cycle
+    
+    setActiveSimulationStatus(nextStatus);
+    
+    if (completedOrderId) {
+      // 1. Update in local storage
+      try {
+        const localOrders = JSON.parse(localStorage.getItem('threads-fallback-orders') || '[]');
+        const updated = localOrders.map((o: any) => {
+          if (o.id === completedOrderId) {
+            return { ...o, status: nextStatus };
+          }
+          return o;
+        });
+        localStorage.setItem('threads-fallback-orders', JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Local storage update skipped:", e);
+      }
+      
+      // 2. Update in Firestore
+      try {
+        const orderRef = doc(db, 'orders', completedOrderId);
+        await setDoc(orderRef, {
+          status: nextStatus,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        console.log(`Firestore order status updated to ${nextStatus} for ID: ${completedOrderId}`);
+      } catch (firestoreErr) {
+        console.warn('Firestore sync skipped or failed:', firestoreErr);
+      }
+    }
+  };
+
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -515,44 +621,311 @@ export default function Checkout({ cart, onComplete, user, onLoginToggle }: Chec
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-8 text-center">
-        <motion.div 
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-24 h-24 bg-accent flex items-center justify-center mb-12 shadow-[0_0_50px_rgba(230,30,30,0.5)]"
-        >
-          <PackageCheck className="w-12 h-12 text-white" />
-        </motion.div>
-        
-        <motion.div
-           initial={{ y: 20, opacity: 0 }}
-           animate={{ y: 0, opacity: 1 }}
-           transition={{ delay: 0.3 }}
-        >
-          <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase mb-4 block">Acquisition_Successful</span>
-          <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-6">Archive Secured.</h2>
-          
-          {completedOrderId && (
-            <div className="mb-10 p-5 bg-surface border border-accent/20 inline-flex flex-col items-center">
-              <span className="text-[10px] font-black text-muted uppercase tracking-[0.4em] mb-2 block border-b border-white/5 pb-2 w-full">Manifest_ID</span>
-              <span className="text-2xl font-mono text-accent font-bold tracking-[0.2em]">{completedOrderId}</span>
-            </div>
-          )}
-
-          <p className="text-xs font-mono text-muted uppercase tracking-widest max-w-md mx-auto mb-12 leading-relaxed">
-            Your items have been allocated and are moving into the logistics grid. Serial numbers and tracking manifests will be dispatched to your terminal shortly.
-          </p>
-          
-          <button 
+      <div className="min-h-screen bg-bg text-white flex flex-col p-4 sm:p-8 md:p-12 font-mono">
+        {/* Top Header */}
+        <div className="max-w-7xl w-full mx-auto flex flex-col md:flex-row justify-between items-start md:items-center border-b border-white/5 pb-8 mb-10 gap-4">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black tracking-[0.6em] text-accent uppercase block">
+              SYSTEM_ACQUISITION_STATUS
+            </span>
+            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter">
+              Archive Secured.
+            </h1>
+          </div>
+          <button
             onClick={() => navigate('/')}
-            className="group relative bg-white text-bg px-12 py-5 text-xs font-black uppercase tracking-[0.4em] transition-all hover:bg-accent hover:text-white overflow-hidden"
+            className="group relative bg-white text-bg px-8 py-4 text-[10px] font-black uppercase tracking-[0.3em] transition-all hover:bg-accent hover:text-white cursor-pointer"
           >
-            <span className="relative z-10 text-xs">Return to Operations</span>
-            <motion.div 
-              className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300"
-            />
+            <span className="relative z-10">Return to Operations</span>
+            <div className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
           </button>
-        </motion.div>
+        </div>
+
+        {/* Dual Panel Dashboard */}
+        <div className="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
+          {/* Left Panel: Placed Order Status & Timeline */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-surface border border-white/5 p-6 md:p-8 space-y-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 bg-accent/10 border-l border-b border-accent/20">
+                <span className="text-[8px] font-black text-accent uppercase tracking-widest animate-pulse">
+                  [ LIVE_STREAM_CONNECTED ]
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[9px] font-black text-muted uppercase tracking-[0.4em] mb-2 block">
+                  NEWLY_SECURED_MANIFEST
+                </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-black/40 p-4 border border-white/5">
+                  <div className="space-y-1">
+                    <span className="text-[8px] font-black text-muted uppercase tracking-widest">
+                      Your Unique Order ID / Track Key
+                    </span>
+                    <p className="text-xl font-bold tracking-widest font-mono text-accent select-all">
+                      {completedOrderId}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => completedOrderId && copyOrderId(completedOrderId)}
+                    className="self-start sm:self-center bg-white/5 hover:bg-accent hover:text-white text-[10px] border border-white/10 px-4 py-2.5 transition-all text-muted uppercase font-black tracking-widest flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedOrderId ? '[ COPIED_ID ]' : '[ COPY ID ]'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Simulated Dispatch timeline */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span className="text-[10px] font-black text-muted uppercase tracking-widest">
+                    Real-Time Dispatch Matrix
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-pulse">
+                      Active Phase: {activeSimulationStatus}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Timeline visual display */}
+                <div className="grid grid-cols-4 gap-2 relative pt-2">
+                  {[
+                    { key: 'PENDING', label: '01 / ENGAGED', desc: 'Secure Handshake established' },
+                    { key: 'PENDING_DISPATCH', label: '02 / ALLOCATED', desc: 'Resource assignment complete' },
+                    { key: 'SHIPPED', label: '03 / TRANSHIPPED', desc: 'Moving through logistics grid' },
+                    { key: 'DELIVERED', label: '04 / COMPLETED', desc: 'Physical delivery cleared' }
+                  ].map((stepObj) => {
+                    const statusOrder = ['PENDING', 'PENDING_DISPATCH', 'SHIPPED', 'DELIVERED'];
+                    const currentIdx = statusOrder.indexOf(activeSimulationStatus);
+                    const stepIdx = statusOrder.indexOf(stepObj.key);
+                    
+                    const isCompleted = stepIdx < currentIdx;
+                    const isActive = stepIdx === currentIdx;
+
+                    return (
+                      <div key={stepObj.key} className="space-y-3 relative z-10">
+                        {/* Status bar segment */}
+                        <div className="h-1.5 w-full relative bg-white/5 overflow-hidden border border-white/5">
+                          {isCompleted && (
+                            <div className="absolute inset-0 bg-accent transition-all duration-500" />
+                          )}
+                          {isActive && (
+                            <motion.div 
+                              animate={{ x: ['-100%', '100%'] }}
+                              transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
+                              className="absolute inset-0 bg-accent/60 w-1/2"
+                            />
+                          )}
+                        </div>
+
+                        <div>
+                          <p className={`text-[9px] font-black tracking-wider uppercase ${isCompleted ? 'text-accent' : isActive ? 'text-white' : 'text-muted'}`}>
+                            {stepObj.label}
+                          </p>
+                          <p className={`text-[8px] leading-tight mt-1 hidden sm:block ${isActive || isCompleted ? 'text-ink' : 'text-muted/60'}`}>
+                            {stepObj.desc}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="bg-[#111] p-4 border border-white/5 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[9px] font-black text-accent uppercase tracking-widest">
+                      [ TESTER_SIMULATION_CABINET ]
+                    </span>
+                    <span className="text-[8px] font-black text-muted uppercase">
+                      Developer Sandbox Utility
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted uppercase leading-relaxed text-left">
+                    Since this is a simulated sandbox checkout, you can trace how the shipping pipeline reacts to changes in real-time. Use the control below to advance the logistics ledger:
+                  </p>
+                  <button
+                    onClick={advanceOrderStatus}
+                    className="w-full bg-accent text-white py-3 hover:bg-white hover:text-bg text-[10px] font-black uppercase tracking-widest transition-all border border-transparent hover:border-white/10 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>[ ADVANCE_LOGISTICS_LEDGER_PHASE ]</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Order quick overview */}
+              <div className="space-y-4 pt-4 border-t border-white/5 text-left">
+                <span className="text-[9px] font-black text-muted uppercase tracking-[0.4em] block">
+                  MANIFEST_RECORDS_SYNOPSIS
+                </span>
+                <div className="bg-black/20 p-4 border border-white/5 space-y-2 text-xs text-muted font-mono uppercase">
+                  <div className="flex justify-between">
+                    <span>RECIPIENT_LEDGER:</span>
+                    <span className="text-white">{formData.firstName} {formData.lastName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>CLEARANCE_EMAIL:</span>
+                    <span className="text-white">{formData.email}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>CARGO_DESTINATION:</span>
+                    <span className="text-white">{formData.address}, {formData.city}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-white/5 pt-2 mt-2 font-bold text-sm">
+                    <span className="text-muted">PAID_TOTAL:</span>
+                    <span className="text-accent">₹{total}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Panel: Cross-Ledger Database Lookup Station */}
+          <div className="lg:col-span-5 space-y-6">
+            <div className="bg-surface border border-white/5 p-6 md:p-8 space-y-6 h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div>
+                  <span className="text-[9px] font-black text-accent uppercase tracking-[0.4em] mb-2 block">
+                    ARCHIVE_INQUIRY_UNIT
+                  </span>
+                  <h3 className="text-xl font-black uppercase tracking-tight">
+                    Status Lookup Terminal
+                  </h3>
+                  <p className="text-[10px] text-muted uppercase leading-relaxed mt-1">
+                    Query the global p-thread datastore using any serial Manifest ID to verify its delivery dispatch state, tracking logs, and payment signatures.
+                  </p>
+                </div>
+
+                {/* Lookup search bar */}
+                <div className="space-y-3 bg-black/40 p-4 border border-white/5">
+                  <span className="text-[8px] font-black text-muted uppercase tracking-widest block">
+                    ENTER ORDER_MANIFEST_ID
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={lookupId}
+                      onChange={(e) => setLookupId(e.target.value.toUpperCase().trim())}
+                      placeholder="E.G. ORD-AB12CD"
+                      className="flex-1 bg-black border border-white/10 p-3 text-xs font-mono text-white tracking-widest uppercase focus:border-accent outline-none"
+                    />
+                    <button
+                      onClick={() => handleLookupOrder(lookupId)}
+                      disabled={lookupLoading}
+                      className="bg-white hover:bg-accent text-bg hover:text-white px-5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center min-w-[80px] cursor-pointer"
+                    >
+                      {lookupLoading ? '...' : '[ FIND ]'}
+                    </button>
+                  </div>
+
+                  {/* Auto trigger search for newly completed order */}
+                  {completedOrderId && (
+                    <button
+                      onClick={() => {
+                        setLookupId(completedOrderId);
+                        handleLookupOrder(completedOrderId);
+                      }}
+                      className="text-[9px] font-black text-accent uppercase hover:underline text-left block cursor-pointer"
+                    >
+                      [ Autofill newly placed order ID: {completedOrderId} ]
+                    </button>
+                  )}
+
+                  {lookupError && (
+                    <p className="text-[9px] font-mono text-accent uppercase italic">
+                      Error // {lookupError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Lookup Result Panel */}
+                <div className="border border-white/5 bg-black/20 p-5 font-mono text-xs flex flex-col justify-center min-h-[250px]">
+                  {lookupResult ? (
+                    <div className="space-y-4 text-left w-full">
+                      <div className="flex justify-between items-start border-b border-white/5 pb-2.5">
+                        <div className="space-y-1">
+                          <span className="text-[8px] text-muted font-black uppercase tracking-widest">
+                            RECORD_RETRIEVED_OK
+                          </span>
+                          <h4 className="text-sm font-bold text-white tracking-widest uppercase">
+                            {lookupResult.id}
+                          </h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[8px] text-muted font-black uppercase tracking-widest block">
+                            STATUS
+                          </span>
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/5 border border-white/10 ${
+                            lookupResult.status === 'DELIVERED' ? 'text-green-400 border-green-400/20' :
+                            lookupResult.status === 'SHIPPED' ? 'text-cyan-400 border-cyan-400/20' :
+                            'text-accent border-accent/20'
+                          }`}>
+                            {lookupResult.status || 'PENDING'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 bg-black/40 p-3 border border-white/5 text-[11px]">
+                        <div className="flex justify-between">
+                          <span className="text-muted uppercase">DATE_ACQUIRED:</span>
+                          <span className="text-white uppercase font-bold">
+                            {lookupResult.createdAt || lookupResult.created_at ? new Date(lookupResult.createdAt || lookupResult.created_at).toLocaleDateString() : 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted uppercase">GATEWAY_PAY_ID:</span>
+                          <span className="text-white font-mono uppercase text-[9px] max-w-[150px] truncate">
+                            {lookupResult.paymentId || lookupResult.payment_id || 'DEMO_MOCK_ALLOCATION'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-white/5 pt-1 mt-1 font-bold">
+                          <span className="text-muted uppercase">BILLING_TOTAL:</span>
+                          <span className="text-accent">₹{lookupResult.total}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[8px] font-black text-muted uppercase tracking-widest block">
+                          ITEMS_CONTAINED_IN_SHIELD
+                        </span>
+                        <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {lookupResult.items?.map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between text-[11px] bg-white/5 p-1.5 border border-white/5 uppercase">
+                              <div className="space-y-0.5">
+                                <p className="font-bold text-white max-w-[150px] truncate">{item.name}</p>
+                                <p className="text-[9px] text-muted">
+                                  {item.color || item.selectedColor} // {item.size || item.selectedSize} // QTY: {item.quantity}
+                                </p>
+                              </div>
+                              <span className="font-mono text-accent">₹{(item.price || 0) * (item.quantity || 1)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted uppercase space-y-2 py-6 italic w-full">
+                      <p className="text-[10px] tracking-widest">
+                        [ LEDGER_DOCK_INACTIVE ]
+                      </p>
+                      <p className="text-[8px] leading-relaxed">
+                        Search above for any Manifest ID to print its real-time logistics clearance index instantly on this display.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-white/5 p-4 bg-black/10 mt-4 text-[9px] text-muted leading-relaxed uppercase text-left">
+                Security clearance is managed end-to-end. For manual ledger updates, connect with Operations command terminal.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer info line */}
+        <div className="max-w-7xl w-full mx-auto text-center border-t border-white/5 mt-10 pt-4 text-[8px] text-muted uppercase tracking-[0.4em] mb-4">
+          Verified Sandbox Operations Network // Decoupled Multi-Ledger Clearance Indexing
+        </div>
       </div>
     );
   }
